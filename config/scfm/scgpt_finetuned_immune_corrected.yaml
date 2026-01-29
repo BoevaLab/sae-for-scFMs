@@ -1,0 +1,11 @@
+defaults:
+  - scgpt  # Inherit from base
+
+# Override specific fields
+model_dir: data/scgpt_finetuned_immune_corrected
+
+model:
+  use_batch_labels: True
+  domain_spec_batchnorm: True
+  do_dab: True
+  explicit_zero_prob: True

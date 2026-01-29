@@ -1,0 +1,32 @@
+base_model: geneformer  # Model name identifier
+_target_: sae4scfm.scfm.geneformer.adapter.GeneformerAdapter
+version: v1
+
+# Model loading
+model_dir: data/geneformer-v1  # Base path
+model_file: ???
+vocab_file: TOKEN_DICTIONARY_FILE_30M
+gene_median_file: GENE_MEDIAN_FILE_30M
+ensembl_dictionary_file: ENSEMBL_DICTIONARY_FILE_30M
+
+# Adapter-specific settings
+hook_layers: bert.encoder.layer[${sae.target_layer}].output.LayerNorm  # Which layer to hook
+preprocessing:
+  max_len: 2048
+  pad_id: 0
+  pad_value: 0
+
+activation_dim: 256
+
+# Compression settings for feature generation
+# Geneformer uses rank-based encoding - no explicit values needed
+compression:
+  datasets:
+    - name: features
+      dtype: float16
+    - name: genes
+      dtype: uint16
+  # Note: No 'values' dataset - genes are ranked by expression
+  
+# Set to true to randomize transformer_encoder weights
+random_init: false

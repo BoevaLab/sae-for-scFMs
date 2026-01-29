@@ -1,0 +1,6 @@
+preprocess:
+    filter_gene_by_counts: False 
+    filter_cell_by_counts: False
+    normalize_total: False #1e4 # whether to normalize the raw data and to what sum
+    log1p: False # whether to log1p the normalized data
+    binning: 51 # whether to bin the raw data and to what number of bins for scGPT

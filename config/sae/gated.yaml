@@ -1,0 +1,24 @@
+trainer:
+  _target_: sae4scfm.sae.gdm.GatedSAETrainer
+autoencoder:
+  _target_: sae4scfm.sae.dictionary.GatedAutoEncoder
+metrics : ['l0', 'mse_loss', 'frac_variance_explained', 'auxk_loss', 'loss', 'sparsity_loss', 'embedding_recovery_score']
+
+# Hyperparameters for trainer instantiation
+hyperparams:
+    # SAE-specific hyperparameters
+    l1_penalty: 10
+    lr: 0.0001
+    
+    # Reference other config values using interpolation
+    activation_dim: ${scfm.activation_dim}  # From scfm config
+    dict_size: ${sae.dict_size}  # Computed value will be in parent config
+    device: ${device}  # Reference from root config
+    layer: ${sae.target_layer}
+    lm_name: ${scfm.base_model}
+    seed: ${seed}
+    steps: ${sae.steps}  # Computed value will be in parent config
+    warmup_steps: 0
+    dict_class: ${sae.autoencoder._target_}
+
+target_layer: 10

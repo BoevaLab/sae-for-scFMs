@@ -1,0 +1,31 @@
+# SAE checkpoint to load (required)
+sae_checkpoint:
+  experiment: "steering_tables"
+  timestamp: "Jan19-08-38"  # Format: %b%d-%H-%M from training
+  # Will load: experiments/${experiment}/${timestamp}/model.pth
+  # And config: experiments/${experiment}/${timestamp}/.hydra/config.yaml
+
+# Steering parameters
+steering:
+
+  # Clamp values to test
+  clamp_values: [-2.0] 
+
+  seeds: [42, 43, 44]  
+  
+  # Feature selection strategy
+  feature_selection:
+    _target_: sae4scfm.core.steering.RandomFeatureSelector #FileFeatureSelector RandomFeatureSelector
+    #feature_file: experiments/analysis/${sae_checkpoint.experiment}/results-${sae_checkpoint.timestamp}.csv
+  
+  # Number of features to steer (for incremental analysis)
+  n_features_list: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+
+hydra:
+  job:
+    chdir: False
+  run:
+    dir: experiments/steer/${sae_checkpoint.experiment}/${sae_checkpoint.timestamp}/
+  sweep:
+    dir: experiments/steer/${sae_checkpoint.experiment}/sweeps/${sae_checkpoint.timestamp}/
+    subdir: ${hydra.job.override_dirname}

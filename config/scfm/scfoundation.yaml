@@ -1,0 +1,29 @@
+base_model: scfoundation  # Model name identifier
+_target_: sae4scfm.scfm.scfoundation.adapter.scFoundationAdapter
+
+# Model loading
+model_dir: data/scfoundation  # Base path
+model_file: models.ckpt
+vocab_file: OS_scRNA_gene_index.19264.tsv
+
+# Adapter-specific settings
+hook_layers: encoder.transformer_encoder[${sae.target_layer}].norm2 # Which layer to hook
+preprocessing:
+  max_len: 4096
+  pad_id: ???
+  pad_value: 103
+
+activation_dim: 768
+
+# Compression settings for feature generation
+compression:
+  datasets:
+    - name: features
+      dtype: float16
+    - name: values
+      dtype: float16
+    - name: genes
+      dtype: uint16
+  
+# Set to true to randomize transformer_encoder weights
+random_init: false 

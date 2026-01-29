@@ -1,0 +1,11 @@
+defaults:
+  - default
+name: 'census'
+file_name: ???
+file_path: '/cluster/scratch/flaviap/census/data_processed/'
+scbank: False
+census: True
+query_list: ['brain', 'lung', 'heart']
+n_partitions: [2, 5, 4]
+preprocess:
+  split: 0.02

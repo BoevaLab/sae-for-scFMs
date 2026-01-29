@@ -1,0 +1,53 @@
+base_model: scgpt  # Model name identifier
+_target_: sae4scfm.scfm.scgpt.adapter.scGPTAdapter
+
+# Model loading
+model_dir: data/scgpt  # Base path
+model_file: best_model.pt
+config_file: args.json
+vocab_file: vocab.json
+
+# Model architecture config
+model:
+  nhead: 8
+  d_hid: 512
+  d_model: 512
+  nlayers: 12
+  nlayers_cls: 1
+  dropout: 0.2
+  do_mvc: false
+  do_dab: false
+  use_batch_labels: false
+  domain_spec_batchnorm: false
+  explicit_zero_prob: false
+  use_fast_transformer: true
+  fast_transformer_backend: flash
+  pre_norm: false
+  cell_emb_style: avg-pool
+
+activation_dim: ${scfm.model.d_model}
+
+# Adapter-specific settings
+hook_layers: transformer_encoder.layers[${sae.target_layer}].norm2 # Which layer to hook
+preprocessing:
+  max_len: 1200
+  pad_token: "<pad>"
+  pad_id: 60694
+  pad_value: -2
+  special_tokens:
+    - "<pad>"
+    - "<cls>"
+    - "<eoc>"
+
+# Compression settings for feature and input saving
+compression:
+  datasets:
+    - name: features
+      dtype: float16
+    - name: values  
+      dtype: uint8
+    - name: genes
+      dtype: uint16
+  
+# Set to true to randomize transformer_encoder weights
+random_init: false 

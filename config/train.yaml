@@ -1,0 +1,49 @@
+defaults:
+  - scfm: scfoundation
+  - data: covid
+  - sae: batchtopk
+  - buffer: default
+  - override hydra/hydra_logging: colorlog
+  - override hydra/job_logging: colorlog
+  - _self_
+
+
+experiment: 
+  number: "layer_sweeps"
+  group: 'layer'
+  eval_steps: 100  # Evaluate every N training steps
+
+seed: 42
+
+# Device configuration (will be set at runtime)
+device: cuda
+
+sae:
+  target_layer: 5
+  dictionary_multiplier: 0.66666
+  
+  # Computed values using custom resolvers
+  dict_size: ${compute_dict_size:${sae.dictionary_multiplier},${scfm.activation_dim}}
+  steps: ${compute_steps:${data.n_cells},${buffer.ctx_len},${buffer.out_batch_size},${buffer.n_eval_batches},${data.preprocess.batch_size}}
+  
+  hyperparams:
+    k: 10 # k l1_penalty
+    lr: 0.0001
+
+data:
+  preprocess:
+    batch_size: 16
+    subset_hvg: False # 5000 False
+    
+hydra:
+  job:
+    chdir: False 
+  run:
+    dir: experiments/train/${experiment.number}/${now:%b%d-%H-%M}
+  sweep:
+    dir: experiments/train/sweeps/${experiment.number}/${now:%b%d-%H-%M-%S}
+    subdir: ${hydra.job.override_dirname}
+  job_logging:
+    handlers:
+      file:
+        filename: ${hydra.run.dir}/run.log

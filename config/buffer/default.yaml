@@ -1,0 +1,10 @@
+device_buffer: 'cpu'
+n_ctxs: 4096 # number of contexts to store in the buffer
+ctx_len: 256 # number of genes per cell context
+out_batch_size: 8192 # batch size for SAE
+
+# Evaluation settings
+eval_strategy: 'cached'  # 'cached': cache first N batches at first refresh (consistent, reused)
+                         # 'on_demand': consume N batches from training data per eval call
+n_eval_batches: 10       # cached: total batches cached | on_demand: auto-calculated per call
+

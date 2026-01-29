@@ -1,0 +1,5 @@
+defaults:
+  - scgpt  # Inherit from base
+
+# Override specific fields
+model_dir: data/scgpt_finetuned_lung
