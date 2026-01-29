@@ -1,8 +1,6 @@
 defaults:
   - default
 name: 'pbmc'
-file_name: x
-file_path: x
 scbank: False
 census: False
 n_cells: [12039]

@@ -1,8 +1,6 @@
 defaults:
   - default
 name: 'covid'
-file_name: '89619149-162f-4839-8e97-24735924417c.h5ad'
-file_path: '/cluster/home/flaviap/SAE4scFM/data/PBMC_400K/'
 scbank: False
 census: False
 n_cells: [422220]
