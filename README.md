@@ -107,7 +107,6 @@ The project uses Hydra for hierarchical configuration management. Configurations
 
 **Data:**
 - `data.name`: Dataset name (pbmc, covid, census)
-- `data.n_cells`: Number of cells to use
 - `data.preprocess.split`: Train/test split fraction
 - `data.preprocess.subset_hvg`: Whether to subset to highly variable genes
 
