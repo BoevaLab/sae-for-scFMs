@@ -1,0 +1,13 @@
+[project]
+name = "sae-for-scfms"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = [
+    "ipykernel>=7.2.0",
+    "jupyterlab>=4.5.6",
+    "matplotlib>=3.10.8",
+    "pandas>=3.0.1",
+    "seaborn>=0.13.2",
+    "torch>=2.11.0",
+    "umap-learn>=0.5.11",
+]
