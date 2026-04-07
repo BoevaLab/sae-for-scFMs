@@ -2,20 +2,35 @@ from pathlib import Path
 from typing import Literal
 import torch
 import pickle
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 import numpy as np
 import scipy.sparse as sp
 import scanpy as sc
 from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
 
-from geneformer import TOKEN_DICTIONARY_FILE_30M, TOKEN_DICTIONARY_FILE, GENE_MEDIAN_FILE_30M, GENE_MEDIAN_FILE, ENSEMBL_DICTIONARY_FILE_30M, ENSEMBL_DICTIONARY_FILE, ENSEMBL_MAPPING_FILE_30M, ENSEMBL_MAPPING_FILE
+import geneformer
 from geneformer import perturber_utils as pu
 from geneformer.tokenizer import rank_genes
 
 from ..base import ModelAdapter
-from sae4scfm.core.utils import OutputHook, SeqDataset, set_seed
+from sae4scfm.core.utils import OutputHook, SeqDataset, highly_variable_genes, seeded
 
+
+def geneformer_file(name: str) -> str:
+    """A Geneformer resource: a file constant of the geneformer package (e.g. TOKEN_DICTIONARY_FILE) or a path."""
+    return getattr(geneformer, name, name)
+
+
+def geneformer_collate_fn(batch):
+    genes = [item["genes"] for item in batch]
+    lengths = [item["length"] for item in batch]
+
+    return {
+        "genes": genes,
+        "length": lengths,
+        "cell_idx": torch.tensor([int(item["cell_idx"]) for item in batch], dtype=torch.long),
+    }
 
 
 class GeneformerAdapter(ModelAdapter):
@@ -42,15 +57,15 @@ class GeneformerAdapter(ModelAdapter):
 
     def _load_vocab(self):
         """Load Geneformer vocabulary from file"""
-        with open(eval(self.cfg.scfm.vocab_file), "rb") as f:
+        with open(geneformer_file(self.cfg.scfm.vocab_file), "rb") as f:
             vocab = pickle.load(f)
         return vocab
     
     def _load_additional_files(self):
-        with open(eval(self.cfg.scfm.gene_median_file), "rb") as f:
+        with open(geneformer_file(self.cfg.scfm.gene_median_file), "rb") as f:
             self.gene_median_dict = pickle.load(f)
 
-        with open(eval(self.cfg.scfm.ensembl_dictionary_file), "rb") as f:
+        with open(geneformer_file(self.cfg.scfm.ensembl_dictionary_file), "rb") as f:
             self.ensembl_dict = pickle.load(f)
 
     def preprocess_data(self, adata, shuffle=True):
@@ -61,25 +76,19 @@ class GeneformerAdapter(ModelAdapter):
         if 'ensembl_id' not in adata.var.columns:
             # filter by existing match
             adata.var["id_in_vocab"] = [1 if gene in self.ensembl_dict.keys() else -1 for gene in adata.var["gene_name"]]
-            adata = adata[:, adata.var["id_in_vocab"] >= 0]
+            adata = adata[:, adata.var["id_in_vocab"] >= 0].copy()
             adata.var['ensembl_id'] = adata.var["gene_name"].map(self.ensembl_dict)
 
         # filter genes by those in vocab
         adata.var["id_in_vocab"] = [1 if gene in self.vocab.keys() else -1 for gene in adata.var["ensembl_id"]]
-        adata = adata[:, adata.var["id_in_vocab"] >= 0]
+        adata = adata[:, adata.var["id_in_vocab"] >= 0].copy()
 
         gene_col = "ensembl_id"
 
         if self.cfg.data.preprocess.subset_hvg:
             print('HVG', flush=True)
-            sc.pp.highly_variable_genes(
-                        adata,
-                        layer=None,
-                        n_top_genes=self.cfg.data.preprocess.subset_hvg,
-                        batch_key=None,
-                        flavor="seurat_v3" if self.cfg.data.preprocess.counts else "cell_ranger",
-                        subset=True,
-                    )
+            highly_variable_genes(adata, self.cfg.data.preprocess.subset_hvg,
+                                  "seurat_v3" if self.cfg.data.preprocess.counts else "cell_ranger", subset=True)
 
         norm_factor_vector = np.array([self.gene_median_dict[i] for i in adata.var[gene_col]])
 
@@ -119,46 +128,57 @@ class GeneformerAdapter(ModelAdapter):
                     for i in range(X_norm.shape[0])
                 ]
 
-        # ensure no tokenized_cells are empty
-        empty_cell_indices = [i for i, cell in enumerate(tokenized_cells) if cell.size == 0]
-        if len(empty_cell_indices) > 0:
-            print(
-                "Warning: cells without any genes in token dictionary detected. This is unusual and may indicate empty droplets or otherwise invalid cells within the input data. Consider further QC prior to tokenization. Proceeding with excluding empty cells."
-            )
-            empty_cell_indices.sort(reverse=True) # for safe deletion
-            for index in empty_cell_indices:
-                del tokenized_cells[index]
+        # Cells without any vocab gene cannot be tokenized; drop them but keep the positions of the
+        # remaining cells (cell_idx) so outputs stay aligned with the input AnnData.
+        cell_idx = [i for i, cell in enumerate(tokenized_cells) if cell.size > 0]
+        if len(cell_idx) < len(tokenized_cells):
+            print(f"Warning: {len(tokenized_cells) - len(cell_idx)} cells have no genes in the token "
+                  "dictionary (empty droplets or invalid cells?) and are excluded.")
+            tokenized_cells = [tokenized_cells[i] for i in cell_idx]
 
 
-        if self.cfg.scfm.version == 'v2': # v2 uses a CLS token
-            tokenized_data = {"genes": [
-                torch.cat([torch.tensor([self.vocab.get("<cls>")], dtype=torch.int32),
-                        torch.from_numpy(item).int()[:self.cfg.scfm.preprocessing.max_len - 2],
-                        torch.tensor([self.vocab.get("<eos>")], dtype=torch.int32)])
-                for item in tokenized_cells],
-                                "length": [min(len(x), self.cfg.scfm.preprocessing.max_len) for x in tokenized_cells]
-                            }
+        if self.cfg.scfm.version == 'v2':  # v2 uses CLS + EOS tokens
+            cls_id = self.vocab.get("<cls>")
+            eos_id = self.vocab.get("<eos>")
+            if cls_id is None or eos_id is None:
+                raise ValueError("Geneformer v2 requires <cls> and <eos> tokens in vocab.")
+
+            genes_list = []
+            lengths_list = []
+            for item in tokenized_cells:
+                # Truncate to leave space for CLS/EOS so final length <= max_len
+                core = torch.from_numpy(item).int()[: self.cfg.scfm.preprocessing.max_len - 2]
+                genes = torch.cat(
+                    [
+                        torch.tensor([cls_id], dtype=torch.int32),
+                        core,
+                        torch.tensor([eos_id], dtype=torch.int32),
+                    ]
+                )
+                genes_list.append(genes)
+                lengths_list.append(int(genes.shape[0]))
+
+            tokenized_data = {"genes": genes_list, "length": lengths_list}
         else:
-            tokenized_data = {"genes": [torch.from_numpy(item).int()[:self.cfg.scfm.preprocessing.max_len] for item in tokenized_cells],
-                                "length": [min(len(x), self.cfg.scfm.preprocessing.max_len) for x in tokenized_cells]
-                            }
-
-        def collate_fn(batch):
-            genes = [item["genes"] for item in batch]
-            lengths = [item["length"] for item in batch]
-
-            return {
-                "genes": genes,
-                "length": lengths
+            genes_list = [torch.from_numpy(item).int()[: self.cfg.scfm.preprocessing.max_len] for item in tokenized_cells]
+            tokenized_data = {
+                "genes": genes_list,
+                "length": [int(g.shape[0]) for g in genes_list],
             }
+        tokenized_data["cell_idx"] = cell_idx
+
+        
+        generator = torch.Generator()
+        generator.manual_seed(self.cfg.seed)
 
         data_loader = DataLoader(
                     dataset= SeqDataset(tokenized_data),
                     batch_size=self.cfg.data.preprocess.batch_size,
-                    num_workers= 0,
+                    num_workers=self.cfg.buffer.num_workers,
                     pin_memory=True,
                     shuffle=shuffle,
-                    collate_fn=collate_fn
+                    collate_fn=geneformer_collate_fn,
+                    generator=generator
                 )
 
         return data_loader
@@ -176,7 +196,7 @@ class GeneformerAdapter(ModelAdapter):
         input_data_minibatch = pu.pad_tensor_list(
         inputs['genes'], max_len_batch, self.cfg.scfm.preprocessing.pad_id, model_input_size)
 
-        with torch.no_grad():
+        with torch.inference_mode():
             outputs = self.model(
                 input_ids=input_data_minibatch.to(device_model),
                 attention_mask=pu.gen_attention_mask(inputs),
@@ -185,11 +205,12 @@ class GeneformerAdapter(ModelAdapter):
         if return_embeddings:
             original_lens = torch.tensor(inputs["length"], device=device_model)
             if self.cfg.scfm.version == 'v2':
-                embs_i = outputs.hidden_states[12]
+                # Last hidden layer (Geneformer's EmbExtractor default, emb_layer=-1, is the second-to-last).
+                embs_i = outputs.hidden_states[-1]
                 non_cls_embs = embs_i[:, 1:, :]
                 mean_embs = pu.mean_nonpadding_embs(non_cls_embs, original_lens - 2) # remove cls and eos
             else:
-                embs_i = outputs.hidden_states[6]
+                embs_i = outputs.hidden_states[-1]
                 mean_embs = pu.mean_nonpadding_embs(embs_i, original_lens)
             return mean_embs.cpu()
         else:
@@ -208,8 +229,7 @@ class GeneformerAdapter(ModelAdapter):
                 self.output_hook.modify = True
                 self.output_hook.x_hat = x_hat
 
-            with self.output_hook:
-                set_seed(self.cfg.seed)
+            with self.output_hook, seeded(self.cfg.seed):
                 embeddings = self.forward(inputs, device_model, return_embeddings=True)
                 
                 if return_activations:
@@ -229,6 +249,15 @@ class GeneformerAdapter(ModelAdapter):
         positions = torch.arange(max_len_batch).unsqueeze(0)
         lengths = torch.tensor(original_lengths).unsqueeze(1)
         mask = positions < lengths
+
+        # For Geneformer v2, exclude CLS (pos 0) and EOS (pos length-1) from the mask.
+        # This aligns token sampling + SAE reconstruction with how cell embeddings are computed
+        # (mean pooling over non-special tokens).
+        if self.cfg.scfm.version == "v2":
+            # positions > 0 removes CLS
+            mask = mask & (positions > 0)
+            # positions < (lengths - 1) removes EOS for each sequence
+            mask = mask & (positions < (lengths - 1))
         
         return mask
 
@@ -261,7 +290,13 @@ class GeneformerAdapter(ModelAdapter):
             self.vocab = self._load_vocab()
         inv_ensembl_dict = {v: k for k, v in self.ensembl_dict.items()}
         inv_vocab = {v: k for k, v in self.vocab.items()}
-        return [inv_ensembl_dict[inv_vocab[i]] for i in ids]
+        return [inv_ensembl_dict.get(inv_vocab[i], inv_vocab[i]) for i in ids]  # special tokens keep their name
+
+    def special_token_ids(self) -> set:
+        """Token ids that are not genes (<pad>, <mask>, <cls>, <eos>)."""
+        if self.vocab is None:
+            self.vocab = self._load_vocab()
+        return {i for token, i in self.vocab.items() if str(token).startswith("<")}
 
     def clear_hooks(self, type = Literal['save','modify']):
         """Remove registered hook"""

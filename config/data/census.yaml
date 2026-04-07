@@ -1,9 +1,13 @@
 defaults:
   - default
 name: 'census'
+file_name: ???
+file_path: 'data/census'
 scbank: False
 census: True
-query_list: ['brain', 'lung', 'heart']
-n_partitions: [2, 5, 4]
+query_list: ['subset_improved']
+n_partitions: [10]
+n_cells: [1860185]
 preprocess:
-  split: 0.02
+  counts: True
+  split: 1

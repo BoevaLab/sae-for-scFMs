@@ -1,0 +1,6 @@
+defaults:
+  - scgpt  # Inherit from base
+
+# scGPT finetuned on the Tahoe training cells (scgpt_finetune data=tahoe_partitions, without the
+# treated cells of the held-out lines)
+model_dir: data/scgpt_finetuned_tahoe_subset

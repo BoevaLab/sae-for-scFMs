@@ -3,7 +3,7 @@ _target_: sae4scfm.scfm.geneformer.adapter.GeneformerAdapter
 version: v2
 
 # Model loading
-model_dir: data/geneformer-v2  # Base path
+model_dir: data/geneformer  # Base path
 model_file: ???
 vocab_file: TOKEN_DICTIONARY_FILE
 gene_median_file: GENE_MEDIAN_FILE

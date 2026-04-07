@@ -1,0 +1,18 @@
+# DMSO and panobinostat at 0.05, 0.5 and 5 uM, every cell line (all_balanced.h5ad). Without a cell selection
+# all doses are loaded (dose panels, Fig. 3d-f). jobs/batch_jobs/submit_drug_induction.py selects:
+#   ++data.preprocess.dose=<dose> ++data.preprocess.drop_cell_lines=[held-out]  drug AMI, max activation
+#   ++data.preprocess.dose=<dose> ++data.preprocess.balance={...}               induction sweep, scores
+#   ++data.preprocess.keep_cell_lines=[3 held-out lines]                         dose panels (Fig. 3d-f)
+defaults:
+  - tahoe
+
+name: 'tahoe_panobinostat_all'
+file_name: 'all_balanced.h5ad'
+file_path: 'data/tahoe/panobinostat'
+scbank: False
+census: False
+n_cells: [498429]  # the whole file (only SAE training reads it; feature files are sized from the cells loaded)
+dose: 0.5  # uM: the concentration panobinostat is steered and scored at (= the dose in tahoe_panobinostat)
+preprocess:
+  counts: True
+  split: 0.1  # fraction used for feature selection and the dose panels

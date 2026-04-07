@@ -1,0 +1,12 @@
+defaults:
+  - default
+name: 'replogle'
+file_name: 'ReplogleWeissman2022_rpe1.h5ad'
+file_path: 'data/replogle'
+scbank: False
+census: False
+n_cells: [247914] #[11966]
+perturbations: ['control', 'GBF1', 'SEC13', 'COPA', 'COPB1', 'COPB2', 'ARCN1', 'PTEN']
+preprocess:
+  counts: True
+  split: 1

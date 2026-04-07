@@ -7,7 +7,6 @@ from abc import ABC, abstractmethod
 import torch as t
 import torch.nn as nn
 import torch.nn.init as init
-import einops
 from typing import Optional
 
 
@@ -131,7 +130,7 @@ class AutoEncoder(Dictionary, nn.Module):
         """
         Load a pretrained autoencoder from a file.
         """
-        state_dict = t.load(path)
+        state_dict = t.load(path, map_location="cpu")
         dict_size, activation_dim = state_dict["encoder.weight"].shape
         autoencoder = cls(activation_dim, dict_size)
         autoencoder.load_state_dict(state_dict)
@@ -267,7 +266,7 @@ class GatedAutoEncoder(Dictionary, nn.Module):
         """
         Load a pretrained autoencoder from a file.
         """
-        state_dict = t.load(path)
+        state_dict = t.load(path, map_location="cpu")
         dict_size, activation_dim = state_dict["encoder.weight"].shape
         autoencoder = GatedAutoEncoder(activation_dim, dict_size)
         autoencoder.load_state_dict(state_dict)
@@ -346,7 +345,7 @@ class JumpReluAutoEncoder(Dictionary, nn.Module):
         loading function.
         """
         if not load_from_sae_lens:
-            state_dict = t.load(path)
+            state_dict = t.load(path, map_location="cpu")
             activation_dim, dict_size = state_dict["W_enc"].shape
             autoencoder = JumpReluAutoEncoder(activation_dim, dict_size)
             autoencoder.load_state_dict(state_dict)
@@ -417,7 +416,7 @@ class AutoEncoderNew(Dictionary, nn.Module):
         """
         Load a pretrained autoencoder from a file.
         """
-        state_dict = t.load(path)
+        state_dict = t.load(path, map_location="cpu")
         dict_size, activation_dim = state_dict["encoder.weight"].shape
         autoencoder = AutoEncoderNew(activation_dim, dict_size)
         autoencoder.load_state_dict(state_dict)

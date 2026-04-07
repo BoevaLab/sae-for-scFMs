@@ -3,7 +3,7 @@ Data Loading Module
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, Iterator, Callable
+from typing import Dict, Iterator
 import torch
 from torch.utils.data import SequentialSampler
 from omegaconf import DictConfig
@@ -47,6 +47,10 @@ class DataLoader(ABC):
         """Check if all data has been consumed"""
         return self._exhausted
 
+    def n_cells(self):
+        """Number of cells the loader yields, or None when it is not known up front (streamed data)."""
+        return None
+
 # ============================================================================
 
 class SimpleDataLoader(DataLoader):
@@ -84,6 +88,10 @@ class SimpleDataLoader(DataLoader):
         # Preprocess (adapter-specific)
         self.dataloader = self.adapter.preprocess_data(adata, shuffle=not self.test_mode)
         log.info(f"Created DataLoader with {len(self.dataloader)} batches")
+
+    def n_cells(self) -> int:
+        self._initialize_dataloader()
+        return len(self.dataloader.dataset)
     
     def __iter__(self):
         self._initialize_dataloader()
@@ -135,7 +143,11 @@ class QueryDataLoader(DataLoader):
         self.current_partition_idx = 0
         self.current_dataloader = None
         self.current_iterator = None
-    
+        # Batches carry cell_idx as the position in the concatenation of all partitions (in loading
+        # order), not within the partition: the adapters number each partition's cells from 0.
+        self._sizes = {}   # (query, partition) -> cells loaded
+        self._offset = 0   # cells of the partitions before the current one
+
     def _load_partition(self):
         """
         Load a specific query/partition as a dataloader.
@@ -155,7 +167,10 @@ class QueryDataLoader(DataLoader):
         )
 
         adata = load_adata(self.cfg)
-        
+        key = (self.current_query_idx, self.current_partition_idx)
+        self._sizes[key] = adata.n_obs
+        self._offset = sum(n for k, n in self._sizes.items() if k < key)
+
         self.current_dataloader = self.adapter.preprocess_data(adata, shuffle=not self.test_mode)
         self.current_iterator = iter(self.current_dataloader)
     
@@ -190,9 +205,12 @@ class QueryDataLoader(DataLoader):
     def __next__(self) -> Dict[str, torch.Tensor]:
         if self._exhausted:
             raise StopIteration
-        
+
+        if self.current_iterator is None:
+            self._load_partition()
+
         try:
-            return next(self.current_iterator)
+            batch = next(self.current_iterator)
         except StopIteration:
             # Current query/partition exhausted, try next
             if self._advance_to_next():
@@ -201,6 +219,9 @@ class QueryDataLoader(DataLoader):
                 # All queries exhausted
                 self._exhausted = True
                 raise StopIteration
+        if isinstance(batch, dict) and "cell_idx" in batch and self._offset:
+            batch = {**batch, "cell_idx": batch["cell_idx"] + self._offset}
+        return batch
     
     def reset(self):
         """Reset to first query/partition"""
@@ -272,7 +293,7 @@ class ScBankDataLoader(DataLoader):
             collate_fn=collator,
             drop_last=False,
             num_workers=2 if len(os.sched_getaffinity(0)) / n_gpus >= 4 else 0,
-            pin_memory=False if n_gpus > 1 else True,
+            pin_memory=True,
         )
         
         self.current_iterator = iter(dataloader)
@@ -393,7 +414,111 @@ class MultiProcessDataLoader(DataLoader):
         self.base_loader.reset()
         self.base_loader.current_partition_idx = self.worker_id
 
+class MultiProcessQueryDataLoader(DataLoader):
+    """
+    Multi-process loader for query/partitioned `.h5ad` inputs (census-style).
+
+    This assigns each worker a disjoint subset of (query_idx, partition_idx)
+    pairs (interleaved), and yields batches by loading one partition at a time.
+    """
+
+    def __init__(
+        self,
+        cfg: DictConfig,
+        adapter,
+        worker_id: int,
+        n_workers: int,
+        test_mode: bool = False,
+    ):
+        super().__init__(cfg)
+        log.info(f"worker {worker_id} initializing DataLoader")
+        self.adapter = adapter
+        self.worker_id = worker_id
+        self.n_workers = n_workers
+        self.test_mode = test_mode
+
+        self.query_list = list(cfg.data.query_list)
+        self.n_partitions = cfg.data.get("n_partitions", None)
+        if self.n_partitions is None:
+            raise ValueError(
+                "Multi-process QueryDataLoader requires `cfg.data.n_partitions` "
+                "(number of partitions per query)."
+            )
+
+        if len(self.query_list) != len(self.n_partitions):
+            raise ValueError(
+                f"Mismatched lengths: len(query_list)={len(self.query_list)} "
+                f"but len(n_partitions)={len(self.n_partitions)}"
+            )
+
+        # Flatten (query_idx, partition_idx) across all queries, then interleave.
+        all_parts: list[tuple[int, int]] = []
+        offset = cfg.data.get("offset_partition", 0)
+        for qi, n_parts in enumerate(self.n_partitions):
+            for pi in range(int(n_parts)):
+                all_parts.append((qi, pi + offset))
+
+        self.assigned_parts = all_parts[self.worker_id :: self.n_workers]
+        self._assigned_idx = 0
+        self._exhausted = False
+        self._current_iterator = None
+
+    def _load_assigned_partition(self):
+        if self._assigned_idx >= len(self.assigned_parts):
+            self._exhausted = True
+            self._current_iterator = None
+            return
+
+        qi, pi = self.assigned_parts[self._assigned_idx]
+        query_id = self.query_list[qi]
+        n_parts = int(self.n_partitions[qi])
+
+        self.cfg.data.file_name = f"{query_id}/partition_{pi}.h5ad"
+        log.info(
+            f"[worker {self.worker_id}/{self.n_workers}] Loading query "
+            f"{qi + 1}/{len(self.query_list)}: '{query_id}', partition {pi + 1}/{n_parts}"
+        )
+
+        adata = load_adata(self.cfg)
+        dataloader = self.adapter.preprocess_data(adata, shuffle=not self.test_mode)
+        self._current_iterator = iter(dataloader)
+
+    def __iter__(self):
+        self._assigned_idx = 0
+        self._exhausted = False
+        self._load_assigned_partition()
+        return self
+
+    def __next__(self) -> Dict[str, torch.Tensor]:
+        if self._exhausted:
+            raise StopIteration
+
+        if self._current_iterator is None:
+            self._load_assigned_partition()
+            if self._exhausted:
+                raise StopIteration
+
+        try:
+            return next(self._current_iterator)
+        except StopIteration:
+            log.info(f"worker {self.worker_id}/{self.n_workers} partition exhausted, trying next")
+            self._assigned_idx += 1
+            self._load_assigned_partition()
+            return self.__next__()
+
+    def reset(self):
+        self._assigned_idx = 0
+        self._exhausted = False
+        self._load_assigned_partition()
+
+
 # ============================================================================
+
+def partitioned(cfg: DictConfig) -> bool:
+    """Data split over query/partition files (data.query_list: census, tahoe_partitions), read by
+    QueryDataLoader, as opposed to a single file (data.file_name)."""
+    return bool(cfg.data.get('census', False) or cfg.data.get('query_list', None))
+
 
 def create_data_loader(cfg: DictConfig, adapter, **kwargs) -> DataLoader:
     """
@@ -415,7 +540,7 @@ def create_data_loader(cfg: DictConfig, adapter, **kwargs) -> DataLoader:
             **kwargs)
     
     # Multi-query or multi-partition
-    elif cfg.data.get('census', False) or len(cfg.data.get('query_list', [])) > 1:
+    elif partitioned(cfg):
         log.info("Using QueryDataLoader")
         return QueryDataLoader(
             cfg=cfg,
@@ -451,14 +576,32 @@ def create_multiprocess_data_loader(
     Returns:
         DataLoader configured for this worker
     """
-    # Only ScBank supports multi-process loading (partitioned data)
-    if not cfg.data.get('scbank', False):
-        raise ValueError("Multi-process loading only supported for partitioned data (scbank)")
-    
-    return MultiProcessDataLoader(
-        cfg=cfg,
-        base_loader_class=ScBankDataLoader,
-        worker_id=worker_id,
-        n_workers=n_workers,
-        **kwargs
+    # Optional: adapter is required for query-based loaders, but should not be
+    # forwarded to loaders that don't accept it (e.g. scbank).
+    adapter = kwargs.pop("adapter", None)
+
+    # scBank (tokenized databank) path
+    if cfg.data.scbank:
+        return MultiProcessDataLoader(
+            cfg=cfg,
+            base_loader_class=ScBankDataLoader,
+            worker_id=worker_id,
+            n_workers=n_workers,
+            **kwargs,
+        )
+    # Census/query-partitioned `.h5ad` path
+    if partitioned(cfg):
+        if adapter is None:
+            raise ValueError("Multi-process QueryDataLoader requires `adapter=...`.")
+        return MultiProcessQueryDataLoader(
+            cfg=cfg,
+            adapter=adapter,
+            worker_id=worker_id,
+            n_workers=n_workers,
+            **kwargs,
+        )
+
+    raise ValueError(
+        "Multi-process loading is only supported for partitioned inputs "
+        "(scbank or census/query_list with n_partitions)."
     )

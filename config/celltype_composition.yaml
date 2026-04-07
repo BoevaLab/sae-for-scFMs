@@ -1,0 +1,23 @@
+sae_checkpoint:
+  experiment: covid_analysis
+  timestamp: Apr07-13-34
+
+inputs:  # outputs of analyze_features, generate_features (h5) and gene_selectivity for this SAE and dataset
+  analysis_dir: experiments/analysis/${sae_checkpoint.experiment}
+  tag: ""  # analysis.tag of the analyze run
+  features_h5: cached_features/${sae_checkpoint.experiment}/features-${sae_checkpoint.timestamp}.h5
+  selectivity_dir: experiments/selectivity/${sae_checkpoint.experiment}/${sae_checkpoint.timestamp}
+
+label: celltype
+cell_types: [B, Plasma, HPC, Monocyte, Phagocytes]  # Phagocytes: Monocyte or DC (COVID composite label)
+min_ami: 0.5                  # assignment: AMI above this and the feature's highest AMI
+low_expression_quantile: 0.25 # of all gene tokens' input values (1 - q for rank-encoded models)
+ribosomal_enrichment: 4.0     # ribosomal share of activation / ribosomal share of occurrences
+concentrated_above: 0.5       # top-20 mass of the frequency-normalized profile
+
+
+hydra:
+  job:
+    chdir: False
+  run:
+    dir: experiments/composition/${sae_checkpoint.experiment}/${sae_checkpoint.timestamp}

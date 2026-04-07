@@ -3,7 +3,6 @@ Implements the SAE training scheme from https://arxiv.org/abs/2406.04093.
 Significant portions of this code have been copied from https://github.com/EleutherAI/sae/blob/main/sae
 """
 
-import einops
 import torch as t
 import torch.nn as nn
 from collections import namedtuple
@@ -125,7 +124,7 @@ class AutoEncoderTopK(Dictionary, nn.Module):
         """
         Load a pretrained autoencoder from a file.
         """
-        state_dict = t.load(path)
+        state_dict = t.load(path, map_location="cpu")
         dict_size, activation_dim = state_dict["encoder.weight"].shape
 
         if k is None:
@@ -267,13 +266,13 @@ class TopKTrainer(SAETrainer):
                     (1 - self.threshold_beta) * min_activation
                 )
 
-    def loss(self, x, step=None, logging=False):
+    def loss(self, x, step=None, logging=False, update_state=True):
         # Run the SAE
         f, top_acts_BK, top_indices_BK, post_relu_acts_BF = self.ae.encode(
             x, return_topk=True, use_threshold=False
         )
 
-        if step > self.threshold_start_step:
+        if update_state and step > self.threshold_start_step:
             self.update_threshold(top_acts_BK)
 
         x_hat = self.ae.decode(f)
@@ -285,11 +284,12 @@ class TopKTrainer(SAETrainer):
         self.effective_l0 = top_acts_BK.size(1)
 
         # Update "number of tokens since fired" for each features
-        num_tokens_in_step = x.size(0)
-        did_fire = t.zeros_like(self.num_tokens_since_fired, dtype=t.bool)
-        did_fire[top_indices_BK.flatten()] = True
-        self.num_tokens_since_fired += num_tokens_in_step
-        self.num_tokens_since_fired[did_fire] = 0
+        if update_state:
+            num_tokens_in_step = x.size(0)
+            did_fire = t.zeros_like(self.num_tokens_since_fired, dtype=t.bool)
+            did_fire[top_indices_BK.flatten()] = True
+            self.num_tokens_since_fired += num_tokens_in_step
+            self.num_tokens_since_fired[did_fire] = 0
 
         l2_loss = e.pow(2).sum(dim=-1).mean()
         auxk_loss = (

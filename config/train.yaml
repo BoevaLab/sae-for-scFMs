@@ -1,6 +1,6 @@
 defaults:
-  - scfm: scfoundation
-  - data: covid
+  - scfm: scgpt_finetuned_pancreas #geneformer-v2 #scgpt_finetuned_covid
+  - data: pancreas #covid #covid
   - sae: batchtopk
   - buffer: default
   - override hydra/hydra_logging: colorlog
@@ -9,8 +9,7 @@ defaults:
 
 
 experiment: 
-  number: "layer_sweeps"
-  group: 'layer'
+  number: "scgpt_layer_steering_again" #"consistency_covid"
   eval_steps: 100  # Evaluate every N training steps
 
 seed: 42
@@ -19,21 +18,33 @@ seed: 42
 device: cuda
 
 sae:
-  target_layer: 5
-  dictionary_multiplier: 0.66666
+  target_layer: 10
+  dictionary_multiplier: 1
   
   # Computed values using custom resolvers
   dict_size: ${compute_dict_size:${sae.dictionary_multiplier},${scfm.activation_dim}}
   steps: ${compute_steps:${data.n_cells},${buffer.ctx_len},${buffer.out_batch_size},${buffer.n_eval_batches},${data.preprocess.batch_size}}
   
   hyperparams:
-    k: 10 # k l1_penalty
-    lr: 0.0001
+    k: 15 # k l1_penalty
+    lr: 0.001 #0.0001
 
 data:
   preprocess:
     batch_size: 16
-    subset_hvg: False # 5000 False
+    subset_hvg: 5000 # 5000 False
+    include_zero_gene: false
+
+buffer:
+  num_workers: 0
+  use_multiprocessing: false
+  n_eval_batches: 1
+
+resume:
+  enabled: false
+  checkpoint_dir: experiments/train/test_code/Apr30-14-18
+  strict_config: true
+  save_training_checkpoint: false
     
 hydra:
   job:

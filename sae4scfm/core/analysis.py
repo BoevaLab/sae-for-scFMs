@@ -1,250 +1,172 @@
+"""Cell-label scoring of SAE features and gene family helpers."""
+import re
+from typing import Iterable, Mapping
+
 import numpy as np
-import torch
-from sklearn.metrics import adjusted_mutual_info_score
 import pandas as pd
-import json
-import gseapy as gp
-
-# GSEA
-f = open('data/gene_sets/c5.json')
-hallmark = json.load(f)
-f.close()
-gene_sets = {group:hallmark[group]['geneSymbols'] for group in hallmark if group.startswith('GO')}
+from sklearn.metrics import adjusted_mutual_info_score
 
 
-def preprocess_labels(labels, cfg) -> np.ndarray:
-    """
-    Preprocesses labels from AnnData object based on configuration.
+def preprocess_labels(obs: pd.DataFrame, names: Iterable[str], dataset: str, min_cells: int = 10,
+                      columns: Mapping[str, str] | None = None) -> dict:
+    """Turn categorical cell labels into one-vs-rest indicator sublabels.
 
     Args:
-        labels (Dict[str, pd.Categorical]):
-    """
-    batches = labels["batch"].astype("category")
-    celltypes = labels["celltype"].astype("category")
-    
-    batches_dummies = pd.get_dummies(batches)
-    celltypes_dummies = pd.get_dummies(celltypes)
-    
-    labels['batch'] = {
-        label: batches_dummies[label].to_numpy()
-        for label in batches.cat.categories
-    }
-    labels['celltype'] = {
-        label: celltypes_dummies[label].to_numpy()
-        for label in celltypes.cat.categories
-    }
-    if cfg.data.name == 'covid' or cfg.data.name == 'covid_evaluation':
-        additional_cells = ['T']
-        for cell_ in additional_cells:
-            labels['celltype'][cell_] = np.array([cell.startswith(cell_) for cell in celltypes])
-        keep_cells = ['Monocyte', 'NK', 'T', 'B', 'Plasma', 'HPC', 'Platelets']
-        labels['celltype'] = {
-            k: v for k, v in labels['celltype'].items()
-            if k in keep_cells
-        }
+        obs: per-cell metadata (adata.obs), one row per scored cell
+        names: labels to build, e.g. ["batch", "celltype"]; label `name` is read from the obs
+            column `columns.get(name, name)`
+        dataset: dataset name; some datasets add composite sublabels (see `_add_composites`)
+        min_cells: sublabels with fewer positive cells (or no negative cells) are dropped;
+            their AMI would be undefined or dominated by a handful of cells
+        columns: label name -> obs column, where they differ
 
-    elif cfg.data.name == 'pancreas':
-        additional_batches = ['inDrop']
-        for batch in additional_batches:
-            labels['batch'][batch] = np.array([cell.startswith(batch) for cell in batches])
-    elif cfg.data.name == 'lung':
-        additional_batches = ['A', 'B']
-        for batch in additional_batches:
-            labels['batch'][batch] = np.array([cell.startswith(batch) for cell in batches])
-        # Add labels for cells starting with numbers
-        labels['batch']['starts_with_number'] = np.array([
-            cell[0].isdigit() if len(cell) > 0 else False 
-            for cell in batches
-        ])
-        # Add labels for cells starting with letters
-        labels['batch']['starts_with_letter'] = np.array([
-            cell[0].isalpha() if len(cell) > 0 else False 
-            for cell in batches
-        ])
-    elif cfg.data.name == 'immune': 
-        additional_batches = ['Oetjen', 'Sun_sample']
-        for batch in additional_batches:
-            labels['batch'][batch] = np.array([cell.startswith(batch) for cell in batches])
-    else:
-        raise ValueError(f"Dataset {cfg.data.name} not recognized.")
-
-    return labels
-
-def normalize_features(features):
-    """Normalize features by dividing by their maximum activation across all tokens."""
-    features_max = features.view(-1, features.shape[2]).max(dim=0)[0]
-    mask = features_max > 0
-    features[:, :, mask] = features[:, :, mask] / features_max[mask]
-    return features
-
-def label_scoring(feature, labels, cfg):
-    """
-    Calculate label scoring metrics for a feature
-    
-    Args:
-        feature: Feature activations for all cells
-        labels: Dict of label arrays
-        cfg: Configuration
-        
     Returns:
-        Dict with structure {label_name: {metric_name: score}}
+        {label: {sublabel: boolean array over cells}}
     """
-    label_scores = {}
-    for label in cfg.analysis.label_scoring.label:
-        label_scores[label] = {}
-        if "AMI" in cfg.analysis.label_scoring.score:
-            for sublabel in labels[label]:
-                label_scores[label][sublabel] = {}
-                AMI = calculate_AMI(feature, labels[label][sublabel])
-                label_scores[label][sublabel]["AMI"] = AMI
-        if "F1" in cfg.analysis.label_scoring.score:
-            for sublabel in labels[label]:
-                label_scores[label][sublabel] = {}
-                F1 = calculate_F1(feature, labels[label][sublabel])
-                label_scores[label][sublabel]["F1"] = F1
-    
-    return label_scores
+    columns = dict(columns or {})
 
-def gene_scoring(feature, values, genes, adapter, cfg, background_genes, gene_families_dict):
-    """
-    Calculate gene scoring metrics for a feature
-    
+    def column(name):
+        return obs[columns.get(name, name)].astype("category").cat.remove_unused_categories()
+
+    labels = {}
+    for name in names:
+        values = column(name)
+        labels[name] = {category: (values == category).to_numpy() for category in values.cat.categories}
+    _add_composites(labels, column, dataset)
+
+    return {name: {k: v for k, v in sublabels.items() if min_cells <= int(np.sum(v)) < len(v)}
+            for name, sublabels in labels.items()}
+
+
+def _add_composites(labels: dict, column, dataset: str) -> None:
+    """Dataset-specific sublabels that group or combine categories (only for requested labels)."""
+    def prefix_groups(name, prefixes):
+        values = column(name).astype(str)
+        for prefix in prefixes:
+            labels[name][prefix] = values.str.startswith(prefix).to_numpy()
+
+    if dataset in ("covid", "covid_evaluation") and "celltype" in labels:
+        prefix_groups("celltype", ["T"])
+        labels["celltype"]["Phagocytes"] = column("celltype").astype(str).isin(["Monocyte", "DC"]).to_numpy()
+        keep = ["Monocyte", "NK", "T", "B", "Plasma", "HPC", "Platelets", "Phagocytes"]
+        labels["celltype"] = {k: v for k, v in labels["celltype"].items() if k in keep}
+    elif dataset == "pancreas" and "batch" in labels:
+        prefix_groups("batch", ["inDrop"])
+    elif dataset == "lung" and "batch" in labels:
+        prefix_groups("batch", ["A", "B"])
+        batches = column("batch").astype(str)
+        labels["batch"]["starts_with_number"] = batches.str.match(r"\d").to_numpy()
+        labels["batch"]["starts_with_letter"] = batches.str.match(r"[^\W\d_]").to_numpy()
+    elif dataset == "immune" and "batch" in labels:
+        prefix_groups("batch", ["Oetjen", "Sun_sample"])
+    elif dataset == "kang" and "perturbation" in labels:
+        # Cells of one cell type that were stimulated
+        stim = labels["perturbation"]["stim"]
+        celltypes = column("celltype")
+        for celltype in celltypes.cat.categories:
+            labels["perturbation"][f"{celltype}_stim"] = (celltypes == celltype).to_numpy() & stim
+    elif dataset.startswith("tahoe") and "drug" in labels:
+        # Treated cells of one cell line, for every drug other than the DMSO control
+        cell_lines = column("cell_line")
+        for drug, treated in list(labels["drug"].items()):
+            if drug == "DMSO_TF":
+                continue
+            for cell_line in cell_lines.cat.categories:
+                labels["drug"][f"{cell_line}_{drug.lower()}"] = (cell_lines == cell_line).to_numpy() & treated
+
+
+def pool_cells(feature) -> np.ndarray:
+    """[cells] or [cells, tokens] -> [cells]: a cell's activation is its max over tokens."""
+    feature = np.asarray(feature)
+    return feature.max(axis=1) if feature.ndim == 2 else feature
+
+
+def label_scoring(feature, labels: dict, names: Iterable[str], scores: Iterable[str] = ("AMI",)) -> dict:
+    """Score one feature against every sublabel of the given labels.
+
     Args:
-        feature: Feature activations
-        values: Gene expression values
-        genes: Gene identifiers
-        adapter: Model adapter with gene mapping
-        cfg: Configuration
-        background_genes: Background gene list for GSEA
-        gene_families_dict: Pre-calculated dict of gene family lists
-        
+        feature: per-cell activations [cells] or token activations [cells, tokens], scaled to [0, 1]
+        labels: output of `preprocess_labels`
+        names: labels to score
+        scores: any of "AMI" (also returns the best threshold as "AMI_threshold") and "F1"
+
     Returns:
-        Dict with gene scoring results
+        {label: {sublabel: {score: value}}}, always with "direction": mean activation in the
+        sublabel's cells minus outside them (> 0: the feature marks the sublabel, < 0: its absence)
     """
+    pooled = pool_cells(feature).astype(np.float64)
     results = {}
-    mask_active = feature > cfg.analysis.gene_scoring.threshold
-    genes_active = genes[mask_active]
-    genes_active_name = adapter.id2gene(genes_active)
-    for family in cfg.analysis.gene_scoring.gene_families:
-        results[family] = pd.Series(genes_active_name).isin(gene_families_dict[family]).sum()
-
-    gene_list = pd.Series(genes_active_name).unique().tolist()
-    if len(gene_list) >= 10:
-        enriched = gp.enrichr(gene_list=gene_list,
-                        gene_sets=gene_sets,
-                        organism='human',
-                        outdir=None, # don't write to disk
-                        background=background_genes)
-        res = enriched.results.sort_values('Adjusted P-value').head(5)
-        results['GO enrichment'] = '; '.join(res['Term'])
-        results['Overlap'] = '; '.join(res['Overlap'])
-        results['Adjusted P-value'] = '; '.join([str(num) for num in res['Adjusted P-value']])
-        results['GSEA_top5'] = res.to_dict(orient='records')
+    for name in names:
+        results[name] = {}
+        for sublabel, label in labels[name].items():
+            out = results[name][sublabel] = {}
+            label = np.asarray(label).astype(bool)
+            out["direction"] = float(pooled[label].mean() - pooled[~label].mean())
+            if "AMI" in scores:
+                out["AMI"], out["AMI_threshold"] = calculate_AMI(pool_cells(feature), label, return_threshold=True)
+            if "F1" in scores:
+                out["F1"] = calculate_F1(pooled, label)
     return results
 
-def expression_scoring(feature, values, cfg):
+
+def calculate_AMI(feature, label, return_threshold: bool = False):
+    """Max over activation thresholds of the AMI between `feature > t` (per cell) and a 0/1 label.
+
+    `feature` is [cells] (pooled) or [cells, tokens] (a cell is active if any token exceeds t),
+    normalized to [0, 1]. Thresholds at which every cell is (in)active carry no information and
+    are skipped; when no threshold splits the cells, or the label is constant, AMI is NaN
+    (sklearn would report 1.0 when both labelings are constant).
     """
-    Calculate expression statistics for active cells
-    
-    Args:
-        feature: Feature activations
-        values: Gene expression values
-        cfg: Configuration
-        
-    Returns:
-        Dict with expression statistics
-    """
-    mask_active = feature > cfg.analysis.expression_scoring.threshold
-    results = {}
-    
-    if "mean" in cfg.analysis.expression_scoring.score:
-        results["mean"] = values[mask_active].mean()
-    if "std" in cfg.analysis.expression_scoring.score:
-        results["std"] = values[mask_active].std()
-    
-    return results
+    label = np.asarray(label)
+    feature = pool_cells(feature)
+    best, best_t = float("nan"), float("nan")
+    if label.min() == label.max():
+        return (best, best_t) if return_threshold else best
+    for t in np.arange(0.0, 1.0, 0.2):
+        active = feature > t
+        if active.all() or not active.any():
+            continue
+        ami = adjusted_mutual_info_score(label, active)
+        if not ami <= best:  # also true while best is NaN
+            best, best_t = float(ami), float(t)
+    return (best, best_t) if return_threshold else best
 
-def density_scoring(features, genes, cfg):
-    """
-    Calculate density scoring metrics for all features
-    
-    Args:
-        features: All feature activations
-        genes: Gene identifiers
-        cfg: Configuration
-        
-    Returns:
-        Feature density
-    """
-    mask_padding = genes == 65535  # [batch, seq_len]
-    mask_valid = ~mask_padding  # [batch, seq_len]
-    
-    # Count how many valid (non-padding) tokens each feature is active on
-    is_active = features > cfg.analysis.density_scoring.threshold  # [batch, seq_len, num_features]
-    active_counts = (is_active & mask_valid.unsqueeze(-1)).sum(dim=(0, 1))  # [num_features]
-    
-    # Total number of valid tokens
-    total_valid = mask_valid.sum()
-    
-    # Density for each feature
-    density = active_counts / total_valid
-    return density
 
-def calculate_AMI(feature, label):
-    thresholds = np.arange(0.0, 1.0, 0.2)
+def calculate_F1(feature, label) -> float:
+    """Max over activation thresholds of the F1 of `feature >= t` (per cell) against a 0/1 label."""
+    label = np.asarray(label).astype(bool)
+    feature = pool_cells(feature)
+    best = float("nan")
+    for t in np.arange(0.1, 1.0, 0.2):
+        active = feature >= t
+        tp = int((active & label).sum())
+        errors = int((active ^ label).sum())
+        if tp + errors:
+            f1 = 2 * tp / (2 * tp + errors)
+            best = f1 if np.isnan(best) else max(best, f1)
+    return best
 
-    ami = [
-        adjusted_mutual_info_score(
-            label,
-            (feature > t).any(axis=1)
-        )
-        for t in thresholds
-    ]
 
-    return float(np.max(ami))
+RIBOSOMAL_PROTEIN = re.compile(r"^(RP[LS]\d+(A|AL|L|X|Y\d?)?|RPLP[0-2]|RPSA|UBA52|FAU|RPS6K[ABCL]\d)$")
 
-def calculate_F1(feature, label, threshold_tokens=1):
-    P = feature[label]
-    N = feature[~label]
 
-    thresholds = np.arange(0.1, 1.0, 0.2)
+def is_ribosomal_protein_gene(gene: str) -> bool:
+    """Cytosolic ribosomal protein genes (RPL*/RPS* incl. paralogs such as RPL3L, RPS4Y1; RPLP0-2,
+    RPSA, UBA52, FAU) and the ribosomal protein S6 kinases (RPS6KA1-6, RPS6KB1-2, RPS6KC1, RPS6KL1).
+    Excludes pseudogenes (RPL21P*), readthroughs (RPL36A-HNRNPH2) and mitochondrial ribosomal
+    proteins (MRPL*, MRPS*)."""
+    return bool(RIBOSOMAL_PROTEIN.match(str(gene)))
 
-    tp = np.array([
-        ((P >= t).sum(axis=1) >= threshold_tokens).sum()
-        for t in thresholds
-    ])
 
-    fp = np.array([
-        ((N >= t).sum(axis=1) >= threshold_tokens).sum()
-        for t in thresholds
-    ])
-
-    recall = tp / P.shape[0]
-    precision = tp / (tp + fp)
-
-    with np.errstate(divide="ignore", invalid="ignore"):
-        f1 = 2 * precision * recall / (precision + recall)
-
-    return np.nanmax(f1).item()
-
-def gene_families(all_genes):
-    """
-    Pre-calculate gene family lists for efficient reuse in gene_scoring.
-    
-    Args:
-        all_genes: List of all gene names in the dataset
-        
-    Returns:
-        Dict mapping family names to lists of genes in that family
-    """
+def gene_families(all_genes) -> dict:
+    """Genes of a few families (by symbol): ribosomal proteins, mitochondrial, MHC, T-cell receptor,
+    histones, metallothioneins and immunoglobulins."""
     families = {}
-    families['RP'] = [gene for gene in all_genes if (gene.startswith('RPL') or gene.startswith('RPS') or gene in ['UBA52', 'FAU'])]
+    families['RP'] = [gene for gene in all_genes if is_ribosomal_protein_gene(gene)]
     families['MIT'] = [gene for gene in all_genes if gene.startswith('MT-')]
     families['MHC'] = [gene for gene in all_genes if gene.startswith('HLA-')]
     families['TRAV'] = [gene for gene in all_genes if gene.startswith('TR')]
-    families['H'] = [gene for gene in all_genes if (gene.startswith('H1') or gene.startswith('H2') or gene.startswith('H3')
-                or gene.startswith('H4'))]
-    families['MET'] = [gene for gene in all_genes if (gene.startswith('MT1') or gene.startswith('MT2') or gene.startswith('MT3') or gene.startswith('MT4'))]
+    families['H'] = [gene for gene in all_genes if gene.startswith(('H1', 'H2', 'H3', 'H4'))]
+    families['MET'] = [gene for gene in all_genes if gene.startswith(('MT1', 'MT2', 'MT3', 'MT4'))]
     families['IG'] = [gene for gene in all_genes if gene.startswith('IG')]
-    
     return families

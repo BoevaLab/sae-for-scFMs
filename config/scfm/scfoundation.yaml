@@ -10,7 +10,7 @@ vocab_file: OS_scRNA_gene_index.19264.tsv
 hook_layers: encoder.transformer_encoder[${sae.target_layer}].norm2 # Which layer to hook
 preprocessing:
   max_len: 4096
-  pad_id: ???
+  pad_id: 103
   pad_value: 103
 
 activation_dim: 768

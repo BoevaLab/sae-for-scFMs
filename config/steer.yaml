@@ -1,31 +1,58 @@
+# Steering reuses the dataset the SAE was trained on; pass +data=<name> to steer another one.
+
+defaults:
+  - sae_inference: batchtopk
+  - _self_
+
 # SAE checkpoint to load (required)
 sae_checkpoint:
-  experiment: "steering_tables"
-  timestamp: "Jan19-08-38"  # Format: %b%d-%H-%M from training
+  experiment: "scgpt_batch_steering" #"cellxgene"
+  timestamp: "Jul20-13-36" #'Mar26-12-20'#"May11-10-50"  # Format: %b%d-%H-%M from training
   # Will load: experiments/${experiment}/${timestamp}/model.pth
   # And config: experiments/${experiment}/${timestamp}/.hydra/config.yaml
 
+run_tag: ""  # appended to the output folder, e.g. "_panobinostat" to keep one induction run per drug
+
 # Steering parameters
 steering:
+  # suppress: clamp the selected features wherever they fire (batch-effect removal)
+  # induce: write selected features onto a random fraction of each cell's tokens (perturbation induction)
+  mode: suppress
 
-  # Clamp values to test
-  clamp_values: [-2.0] 
+  # true: x' = decode(f') + (x - decode(f)), so only the clamped directions change.
+  # false: x' = decode(f'), i.e. tokens are also replaced by their SAE reconstruction.
+  add_reconstruction_error: false
+  # Also save embeddings of the unclamped reconstruction x -> decode(encode(x)).
+  save_reconstruction_baseline: false
+  # Fraction of the SAE's dataset to steer (1.0: all cells).
+  data_split: 1.0
+  # obs columns saved with the embeddings (cells.csv), for the figures; missing ones are skipped
+  cell_columns: [batch, celltype, cell_line, drug, drugconc]
 
-  seeds: [42, 43, 44]  
-  
-  # Feature selection strategy
+  # --- suppress ---
+  clamp_values: [-2.0]
+  seeds: [44]
   feature_selection:
-    _target_: sae4scfm.core.steering.RandomFeatureSelector #FileFeatureSelector RandomFeatureSelector
-    #feature_file: experiments/analysis/${sae_checkpoint.experiment}/results-${sae_checkpoint.timestamp}.csv
-  
-  # Number of features to steer (for incremental analysis)
-  n_features_list: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    _target_: sae4scfm.core.steering.RandomFeatureSelector # FileFeatureSelector | RandomFeatureSelector
+    feature_file: experiments/analysis/${sae_checkpoint.experiment}/results-${sae_checkpoint.timestamp}.csv
+    label: batch  # FileFeatureSelector ranks features by their max AMI over labels of this name
+  n_features_list: [30]
+
+  # --- induce ---
+  induce:
+    features: []            # feature ids to write; see config/induction/ for the manuscript's lists
+    negative_features: []   # optional: suppressed wherever they fire, as in suppress mode
+    negative_value: -2.0
+    fractions: [0.1, 0.3, 0.5, 0.7]            # f: fraction of each cell's tokens per feature
+    multipliers: [1.0, 1.25, 1.5, 1.75, 2.0]   # v: value written = v * the feature's max activation
+    max_activation_file: null  # reference activations: pooled [cells, features] .pt/.npy, or a generate_features .h5
+    seed: 0
 
 hydra:
   job:
     chdir: False
   run:
-    dir: experiments/steer/${sae_checkpoint.experiment}/${sae_checkpoint.timestamp}/
+    dir: experiments/steer/${sae_checkpoint.experiment}/${sae_checkpoint.timestamp}${run_tag}/
   sweep:
     dir: experiments/steer/${sae_checkpoint.experiment}/sweeps/${sae_checkpoint.timestamp}/
     subdir: ${hydra.job.override_dirname}

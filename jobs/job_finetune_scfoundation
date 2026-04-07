@@ -1,0 +1,11 @@
+#!/bin/bash
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH -p gpu
+#SBATCH --gres=gpu:1
+#SBATCH --time=24:00:00
+#SBATCH --mem-per-cpu=80000
+
+# Finetune scFoundation (config/finetune_scfoundation.yaml)
+source jobs/env.sh
+run scfoundation python -m scripts.scfoundation_finetune "$@"

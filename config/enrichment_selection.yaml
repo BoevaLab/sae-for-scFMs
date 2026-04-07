@@ -1,0 +1,32 @@
+defaults:
+  - programs: fig4e   # config/programs/: the panel's programs and columns
+  - _self_
+
+sae_checkpoint:
+  experiment: scgpt_cellxgene
+  timestamp: L10_s42
+
+inputs:
+  # enrichment_analysis run over all features (the paper: analysis.transform=raw libraries.cc=true libraries.mf=true);
+  # its config names the accumulators and the gene-set library
+  enrichment: experiments/enrichment/${sae_checkpoint.experiment}/${sae_checkpoint.timestamp}_raw
+  # runs of the same SAE with other null seeds (analysis.seed=..., over all features or a subset);
+  # null: the folders <enrichment>_seed*
+  seed_runs: null
+  base_model: null  # scFM of the SAE (scgpt, geneformer, scfoundation); null: read from the training run
+
+selection:
+  q_max: 0.05                # a dot: global q below this ...
+  min_leading_edge: 10       # ... and at least this many leading-edge genes (and effective genes, to qualify)
+  top_genes: 100             # top-scoring annotated genes tested for over-representation
+  ora_q_max: 0.05            # their over-representation q (hypergeometric, BH over features x panel terms)
+  ora_min_overlap: 5         # and at least this many of them in the term
+  max_topk20_mass: 0.9       # features with this much profile mass on 20 genes do not qualify
+  min_effective_genes: 20    # nor features with fewer effective genes
+  single_program_max_off: 1  # tier 1: at most this many columns with a dot outside the program
+  two_program_max_off: 2     # tier 2: the program is one of the two strongest, at most this many columns outside them
+  seed_top_k: 3              # untested candidates per program listed for seed runs
+
+hydra:
+  run:
+    dir: experiments/enrichment_selection/${sae_checkpoint.experiment}/${sae_checkpoint.timestamp}

@@ -1,0 +1,10 @@
+#!/bin/bash
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=2
+#SBATCH --time=2:00:00
+#SBATCH --mem-per-cpu=16000
+
+# Representative enriched feature per gene program (Fig. 4e), from an enrichment run over all features
+# (analysis.transform=raw) and its seed runs (installs blitzgsea if missing)
+source jobs/env.sh
+run scgpt bash -c 'python -c "import blitzgsea" 2>/dev/null || pip install --user blitzgsea; python -m scripts.enrichment_selection "$@"' _ "$@"

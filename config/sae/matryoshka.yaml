@@ -20,6 +20,9 @@ hyperparams:
     seed: ${seed}
     steps: ${sae.steps}  # Computed value will be in parent config
     warmup_steps: 0
+    # Steps before the inference threshold (EMA of the smallest kept activation) starts updating.
+    # Keep it well below the number of training steps, or the threshold stays uncalibrated (-1).
+    threshold_start_step: 1000
     dict_class: ${sae.autoencoder._target_}
 
 target_layer: 10

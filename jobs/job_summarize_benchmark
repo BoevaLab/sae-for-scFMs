@@ -1,0 +1,9 @@
+#!/bin/bash
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --time=0:30:00
+#SBATCH --mem-per-cpu=8000
+
+# Normalized scIB scores of the benchmark runs in config/summarize_benchmark.yaml
+source jobs/env.sh
+run scgpt python -m scripts.summarize_benchmark "$@"

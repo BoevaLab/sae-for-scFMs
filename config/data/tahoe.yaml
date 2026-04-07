@@ -1,0 +1,14 @@
+# One partition of the Tahoe-100M subset (all cells: steering, scoring and analysis).
+# load_adata: celltype = cell line, batch = sample; obs also holds drug, drugname_drugconc, drugconc.
+defaults:
+  - default
+name: 'tahoe'
+file_name: 'filtered_stratified_shuffled/partition_0.h5ad'
+file_path: 'data/tahoe'
+scbank: False
+census: False
+n_cells: [173648]
+control: DMSO_TF
+preprocess:
+  counts: True
+  split: 1

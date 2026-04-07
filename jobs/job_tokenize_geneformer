@@ -1,0 +1,9 @@
+#!/bin/bash
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --time=4:00:00
+#SBATCH --mem-per-cpu=80000
+
+# Tokenize a dataset for Geneformer finetuning: data=<dataset>
+source jobs/env.sh
+run geneformer python -m scripts.geneformer_tokenize "$@"

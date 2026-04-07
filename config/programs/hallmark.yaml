@@ -1,0 +1,23 @@
+# @package _global_
+# Hallmark-only programs (for runs with libraries.bp=false libraries.cp=false, such as the golden fixtures)
+programs:
+  - code: INF
+    name: Inflammation
+    color: "#B25948"
+    columns:
+      - [TNFa / NF-kB, [HALLMARK_TNFA_SIGNALING_VIA_NFKB]]
+      - [IFN-gamma, [HALLMARK_INTERFERON_GAMMA_RESPONSE]]
+      - [IFN-alpha, [HALLMARK_INTERFERON_ALPHA_RESPONSE]]
+  - code: PRO
+    name: Proliferation
+    color: "#556B4B"
+    columns:
+      - [E2F targets, [HALLMARK_E2F_TARGETS]]
+      - [G2M checkpoint, [HALLMARK_G2M_CHECKPOINT]]
+  - code: TIS
+    name: Tissue
+    color: "#8AAECD"
+    columns:
+      - [EMT, [HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION]]
+      - [KRAS up, [HALLMARK_KRAS_SIGNALING_UP]]
+      - [Hypoxia, [HALLMARK_HYPOXIA]]

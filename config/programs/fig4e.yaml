@@ -1,0 +1,61 @@
+# @package _global_
+# Gene programs of Fig. 4e. Per program: a code, the name and colour shown, its columns
+# ([label, [MSigDB terms]]; a feature's dot in a column is its best term there), the columns that
+# qualify a feature for the program (anchor; default: all) and, optionally, a reference gene set
+# most of the qualifying term's leading edge must fall in (leading_edge_set).
+programs:
+  - code: CC
+    name: Cell cycle / DNA / biogenesis
+    color: "#556B4B"
+    anchor: [M phase, Chromosome seg., Chromosomal region, Spindle, DNA repair]
+    columns:
+      - [M phase, [REACTOME_M_PHASE]]
+      - [Chromosome seg., [GOBP_CHROMOSOME_SEGREGATION, GOBP_ORGANELLE_FISSION]]
+      - [Chromosomal region, [GOCC_CHROMOSOMAL_REGION]]
+      - [Spindle, [GOCC_SPINDLE]]
+      - [DNA repair, [REACTOME_DNA_REPAIR]]
+      - [Ribonucleoprot. biogenesis, [GOBP_RIBONUCLEOPROTEIN_COMPLEX_BIOGENESIS]]
+  - code: IMM
+    name: Immune response
+    color: "#B25948"
+    columns:
+      - [Leukocyte immunity, [GOBP_LEUKOCYTE_MEDIATED_IMMUNITY, GOBP_ADAPTIVE_IMMUNE_RESPONSE, GOBP_LEUKOCYTE_CELL_CELL_ADHESION,
+                              GOBP_POSITIVE_REGULATION_OF_CELL_ACTIVATION, GOBP_REGULATION_OF_IMMUNE_EFFECTOR_PROCESS]]
+      - [Cytokine production, [GOBP_POSITIVE_REGULATION_OF_CYTOKINE_PRODUCTION]]
+      - [Lymphocyte differentiation, [GOBP_LYMPHOCYTE_DIFFERENTIATION]]
+      - [T cell activation, [GOBP_REGULATION_OF_T_CELL_ACTIVATION]]
+      - [Interleukin signaling, [REACTOME_SIGNALING_BY_INTERLEUKINS]]
+      - [Pos. reg. cell adh., [GOBP_POSITIVE_REGULATION_OF_CELL_ADHESION]]
+  - code: ECM
+    name: ECM
+    color: "#8AAECD"
+    # The GO term also lists secreted plasma and granule proteins (41% of it is core matrisome)
+    leading_edge_set: {collection: c2, term: NABA_CORE_MATRISOME, min_share: 0.5}
+    columns:
+      - [Collagen ECM, [GOCC_COLLAGEN_CONTAINING_EXTRACELLULAR_MATRIX]]
+      - [ECM organization, [REACTOME_EXTRACELLULAR_MATRIX_ORGANIZATION, GOBP_EXTERNAL_ENCAPSULATING_STRUCTURE_ORGANIZATION]]
+  - code: DEV
+    name: Development / morphogenesis
+    color: "#8B6D8E"
+    columns:
+      - [Embryonic organ dev., [GOBP_EMBRYONIC_ORGAN_DEVELOPMENT, GOBP_GLAND_DEVELOPMENT]]
+      - [Pattern specification, [GOBP_PATTERN_SPECIFICATION_PROCESS]]
+      - [Epithelium morphog., [GOBP_MORPHOGENESIS_OF_AN_EPITHELIUM]]
+      - [Epithelial prolif., [GOBP_EPITHELIAL_CELL_PROLIFERATION]]
+  - code: MUS
+    name: Muscle / contractile
+    color: "#68908E"
+    columns:
+      - [Muscle system, [GOBP_MUSCLE_SYSTEM_PROCESS, WP_MYOMETRIAL_RELAXATION_AND_CONTRACTION_PATHWAYS]]
+      - [Muscle contraction, [GOBP_MUSCLE_CONTRACTION]]
+      - [Muscle tissue dev., [GOBP_MUSCLE_TISSUE_DEVELOPMENT]]
+      - [Contractile fiber, [GOCC_CONTRACTILE_MUSCLE_FIBER]]
+      - [Actomyosin / actin, [GOBP_ACTOMYOSIN_STRUCTURE_ORGANIZATION, GOCC_ACTIN_FILAMENT, GOMF_ACTIN_BINDING]]
+  - code: NEU
+    name: Neuronal / synaptic
+    color: "#A88752"
+    columns:
+      - [Synaptic membrane, [GOCC_SYNAPTIC_MEMBRANE, GOCC_POSTSYNAPTIC_MEMBRANE]]
+      - [Neuronal system, [REACTOME_NEURONAL_SYSTEM]]
+      - [Trans-synaptic sig., [GOBP_REGULATION_OF_TRANS_SYNAPTIC_SIGNALING, GOBP_SYNAPSE_ORGANIZATION]]
+      - [Neuron proj. / potential, [GOBP_REGULATION_OF_NEURON_PROJECTION_DEVELOPMENT, GOBP_REGULATION_OF_MEMBRANE_POTENTIAL]]

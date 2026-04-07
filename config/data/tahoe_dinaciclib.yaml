@@ -1,0 +1,14 @@
+# DMSO and dinaciclib at 0.05 uM only, about 1:1, every cell line (partition_0.h5ad): the PCA / UMAP
+# induction runs (Fig. 3b, S12-S16). Everything else on this drug uses tahoe_dinaciclib_all.
+defaults:
+  - tahoe
+
+name: 'tahoe_dinaciclib'
+file_name: 'partition_0.h5ad'
+file_path: 'data/tahoe/dinaciclib'
+scbank: False
+census: False
+n_cells: [5306]
+preprocess:
+  counts: True
+  split: 0.5  # fraction of the cells steered

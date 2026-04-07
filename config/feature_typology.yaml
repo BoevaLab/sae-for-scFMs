@@ -1,0 +1,19 @@
+sae_checkpoint:
+  experiment: multiprocessing
+  timestamp: Apr29-18-19
+
+inputs:  # outputs of commonality_analysis, gene_selectivity and enrichment_analysis for this SAE
+  commonality: experiments/commonality/${sae_checkpoint.experiment}/${sae_checkpoint.timestamp}/variance_3way_full.csv
+  selectivity: experiments/selectivity/${sae_checkpoint.experiment}/${sae_checkpoint.timestamp}/features.parquet
+  enrichment: experiments/enrichment/${sae_checkpoint.experiment}/${sae_checkpoint.timestamp}/enrichment_collapsed.csv
+
+min_r2_full: 0.5          # cell-informative features
+diffuse_below: 0.25       # top-20 gene mass of diffuse features
+concentrated_above: 0.75  # and of concentrated ones
+
+
+hydra:
+  job:
+    chdir: False
+  run:
+    dir: experiments/typology/${sae_checkpoint.experiment}/${sae_checkpoint.timestamp}

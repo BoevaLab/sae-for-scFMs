@@ -1,0 +1,11 @@
+defaults:
+  - default
+name: 'pancreas'
+file_name: 'human_pancreas_norm_complexBatch.h5ad'
+file_path: 'data/pancreas'
+scbank: False
+census: False
+n_cells: [16382]
+preprocess:
+  counts: False
+  split: 0.3

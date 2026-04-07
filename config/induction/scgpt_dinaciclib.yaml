@@ -1,0 +1,8 @@
+# @package steering.induce
+# Dinaciclib induction features of the manuscript's scgpt Tahoe SAE trained without the six
+# held-out cell lines (experiments/train/tahoe/Jun24-10-48). Feature ids only apply to that checkpoint.
+# f and v are chosen per drug by scripts/score_perturbation.py on the training lines
+# (manuscript: f=0.3, v=2.0).
+sae: tahoe/Jun24-10-48  # the SAE these feature ids belong to (checked by jobs/batch_jobs/submit_drug_induction.py)
+features: [85, 405, 355, 236]
+negative_features: []
