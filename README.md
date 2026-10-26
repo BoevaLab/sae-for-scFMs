@@ -1,197 +1,108 @@
-# SAE for Single-Cell Foundation Models (scFMs)
+# Sparse autoencoders for single-cell foundation models
 
-## Overview
+Code for *Interpreting and steering single-cell foundation models with sparse autoencoders*.
 
-This project provides tools to train sparse autoencoders on activations from various single-cell foundation models (scFMs), enabling mechanistic interpretability of these models. By decomposing neural network activations into sparse, interpretable features, we can better understand what biological patterns and cell states these models have learned.
+Sparse autoencoders (SAEs) are trained on the residual stream of **scGPT**, **scFoundation** and
+**Geneformer V2**, their features are characterized at the cell and gene level, and the features are
+used to steer the models:
 
-## Features
+- **Suppress** batch-associated features and batch effects are corrected (Fig. 2)
+- **Induce** drug-associated features and control cells move toward treated states (Fig. 3)
+- **Read** features as gene programs and cell-level concepts (Fig. 4, 5)
 
-- **Multiple SAE Architectures**: Support for various sparse autoencoder variants including:
-  - Standard SAE with L1 regularization
-  - Top-K SAE
-  - Batch Top-K SAE
-  - Matryoshka Batch Top-K SAE
-  - Gated SAE
-  - JumpReLU SAE
-  - P-Anneal and Gated-Anneal SAE
+## What is in here
 
-- **Multiple scFM Adapters**: Compatible with leading single-cell foundation models:
-  - scGPT
-  - scFoundation
-  - Geneformer
+| path | contents |
+|---|---|
+| `sae4scfm/` | the library: SAE architectures (`sae/`), scFM adapters (`scfm/`), data loading, activation buffer, inference, steering and analysis (`core/`) |
+| `scripts/` | one script per pipeline step, each reading the Hydra config of the same name |
+| `config/` | one config per script, plus the groups `scfm`, `data`, `sae`, `buffer`, `sae_inference`, `induction`, `programs` |
+| `jobs/` | SLURM jobs (`job_<step>`) and the drivers of the paper's experiments (`batch_jobs/`) |
+| `figures/` | one notebook per figure, reading script outputs via `figures/paths.yaml` |
+| `tests/` | unit tests and a golden-output regression harness |
 
-- **Comprehensive Analysis Tools**:
-  - Label scoring (cell type, batch associations)
-  - Gene scoring and enrichment analysis
-  - Expression pattern analysis
-  - Feature density scoring
-  - Feature steering and manipulation
+## Setup
 
-- **Efficient Training Pipeline**:
-  - Parallel data loading with activation buffering
-  - Multi-GPU support
-  - Hydra-based configuration management
-  - Weights & Biases integration for experiment tracking
+The code runs in three containers, one per scFM, because their dependencies conflict: `scgpt`,
+`scfoundation` and `geneformer`. Scripts that do not load an scFM (analysis, enrichment, summaries)
+run in any of them; enrichment also needs `blitzgsea` (`pip install blitzgsea`, or the image in
+`tests/regression/docker/enrich.Dockerfile`).
 
-## Quick Start
+Models and datasets go in `data/` (not tracked):
 
-### Training an SAE
+```
+data/
+  scgpt/                    args.json, best_model.pt, vocab.json
+  scfoundation/             models.ckpt, OS_scRNA_gene_index.19264.tsv
+  geneformer/               model.safetensors, config.json, token_dictionary_gc104M.pkl, gene_name_id_dict_gc104M.pkl
+  <scfm>_finetuned_<data>/  finetuned models (config/scfm/*_finetuned_*.yaml)
+  <dataset>/                the .h5ad files named in config/data/<dataset>.yaml
+  gene_sets/                MSigDB h.json, c2.json, c5.json
+```
 
-Train a sparse autoencoder on a foundation model's activations:
+## Quick start
+
+Run everything from the repository root. Arguments are Hydra overrides.
 
 ```bash
-python scripts/train_sae.py
+# 1. train an SAE on a model's activations
+python -m scripts.train_sae scfm=scgpt data=pancreas sae=batchtopk sae.target_layer=5
+
+# 2. encode a dataset with it
+python -m scripts.generate_features sae_checkpoint.experiment=X sae_checkpoint.timestamp=Y
+
+# 3. score the features against cell labels
+python -m scripts.analyze_features sae_checkpoint.experiment=X sae_checkpoint.timestamp=Y
+
+# 4. steer the model with them
+python -m scripts.steer_features sae_checkpoint.experiment=X sae_checkpoint.timestamp=Y
 ```
 
-The training script uses Hydra for configuration. You can override parameters:
+Every step after training names its SAE with `sae_checkpoint.experiment` and
+`sae_checkpoint.timestamp` (the run folder `experiments/train/<experiment>/<timestamp>`) and uses the
+dataset the SAE was trained on; `+data=<dataset>` switches to another one. Training with
+`hydra.run.dir=experiments/train/<experiment>/<name>` gives a run a fixed name instead of a timestamp.
+
+On a SLURM cluster the same overrides go to `jobs/job_<step>`, which runs the step in
+`$CONTAINERS/<image>.sif` (default `containers/`):
 
 ```bash
-python scripts/train_sae.py \
-  scfm=scfoundation \
-  data=pbmc \
-  sae=batchtopk \
-  sae.target_layer=5 \
-  sae.dictionary_multiplier=0.66666
+IMAGE=geneformer sbatch jobs/job_train scfm=geneformer-v2 scfm.model_file=model.safetensors data=pancreas
+sbatch jobs/job_analyze sae_checkpoint.experiment=X sae_checkpoint.timestamp=Y +data=covid_evaluation
 ```
 
-### Generating Features
+## Pipeline steps
 
-Extract SAE features for downstream analysis:
+| step | script | output |
+|---|---|---|
+| finetune an scFM (optional) | `scgpt_finetune`, `scfoundation_finetune`, `geneformer_tokenize` + `geneformer_finetune` | a finetuned model in `data/` |
+| train an SAE | `train_sae` | `experiments/train/` (model.pth, eval_metrics.json) |
+| encode a dataset | `generate_features` | `cached_features/` (token level `.h5`, or per-cell max with `output.format=pooled`) |
+| score features against labels | `analyze_features` | `experiments/analysis/` (AMI per sublabel, threshold, direction) |
+| gene-level statistics | `gene_selectivity` | `experiments/selectivity/` (accumulators, features.parquet) |
+| pathway enrichment | `enrichment_analysis`, `enrichment_selection` | `experiments/enrichment/`, `experiments/enrichment_selection/` |
+| variance partition, typology, composition | `commonality_analysis`, `feature_typology`, `celltype_composition` | `experiments/commonality/`, `typology/`, `composition/` |
+| case studies | `feature_case_studies` | `experiments/case_studies/` |
+| steering | `steer_features` | `experiments/steer/` (original and steered embeddings, cells.csv) |
+| embeddings without an SAE (DAR baseline) | `embed_cells` | `experiments/steer/<experiment>/s<seed>/` |
+| induction scores | `score_perturbation` | `<steer run>/perturbation_scores/<drug>/` |
+| batch-integration benchmark | `benchmark_integration`, `summarize_benchmark` | `experiments/benchmark/`, `experiments/summary/` |
 
-```bash
-python scripts/generate_features.py \
-  sae_checkpoint.experiment=layer_sweeps \
-  sae_checkpoint.timestamp=Jan29-10-00
-```
+## Configuration notes
 
-### Analyzing Features
-
-Run interpretability analysis on extracted features:
-
-```bash
-python scripts/analyze_features.py \
-  sae_checkpoint.experiment=layer_sweeps \
-  sae_checkpoint.timestamp=Jan29-10-00 \
-  analysis.run_label_scoring=true \
-  analysis.run_gene_scoring=true
-```
-
-### Feature Steering
-
-Manipulate model behavior using learned SAE features:
-
-```bash
-python scripts/steer_features.py \
-  sae_checkpoint.experiment=layer_sweeps \
-  sae_checkpoint.timestamp=Jan29-10-00
-```
-
-## Configuration
-
-The project uses Hydra for hierarchical configuration management. Configurations are organized in [config/](config/):
-
-- [config/train.yaml](config/train.yaml) - Main training configuration
-- [config/scfm/](config/scfm/) - Foundation model configurations
-- [config/sae/](config/sae/) - SAE architecture configurations
-- [config/data/](config/data/) - Dataset configurations (PBMC, COVID, Census)
-- [config/buffer/](config/buffer/) - Activation buffer configurations
-
-### Key Configuration Parameters
-
-**Training:**
-- `sae.target_layer`: Which model layer to extract activations from
-- `sae.dictionary_multiplier`: SAE hidden dimension as multiple of input dimension
-- `sae.hyperparams.k`: Sparsity parameter (for Top-K variants)
-- `sae.hyperparams.lr`: Learning rate
-- `seed`: Random seed for reproducibility
-
-**Data:**
-- `data.name`: Dataset name (pbmc, covid, census)
-- `data.preprocess.split`: Train/test split fraction
-- `data.preprocess.subset_hvg`: Whether to subset to highly variable genes
-
-## Project Structure
-
-```
-sae-for-scFMs/
-├── config/              # Hydra configuration files
-│   ├── data/           # Dataset configs
-│   ├── sae/            # SAE architecture configs
-│   ├── scfm/           # Foundation model configs
-│   └── buffer/         # Data buffer configs
-├── scripts/            # Entry point scripts
-│   ├── train_sae.py           # Train sparse autoencoders
-│   ├── generate_features.py  # Extract SAE features
-│   ├── analyze_features.py   # Analyze feature interpretability
-│   ├── steer_features.py     # Feature steering experiments
-│   └── benchmark_integration.py
-├── sae4scfm/           # Main package
-│   ├── core/          # Core utilities
-│   │   ├── buffer.py         # Activation buffering
-│   │   ├── data_loader.py    # Data loading
-│   │   ├── evaluation.py     # Evaluation metrics
-│   │   ├── analysis.py       # Feature analysis
-│   │   ├── steering.py       # Feature steering
-│   │   └── io_utils.py       # I/O utilities
-│   ├── sae/           # SAE implementations
-│   │   ├── standard.py       # Standard SAE
-│   │   ├── top_k.py         # Top-K SAE
-│   │   ├── batch_top_k.py   # Batch Top-K SAE
-│   │   ├── matryoshka_batch_top_k.py
-│   │   ├── gdm.py           # Gated SAE
-│   │   ├── jumprelu.py      # JumpReLU SAE
-│   │   └── trainer.py       # Base trainer
-│   └── scfm/          # Foundation model adapters
-│       ├── base.py          # Abstract adapter interface
-│       ├── scgpt/          # scGPT adapter
-│       ├── scfoundation/   # scFoundation adapter
-│       └── geneformer/     # Geneformer adapter
-└── jobs/               # Job submission scripts
-```
-
-## Model Adapters
-
-Each foundation model requires a specific adapter that implements the `ModelAdapter` interface defined in [sae4scfm/scfm/base.py](sae4scfm/scfm/base.py). Adapters handle:
-
-- Model loading and initialization
-- Data preprocessing for the specific model format
-- Forward hook registration for activation extraction
-- Model-specific embedding generation
-
-Currently supported models:
-- **scGPT**: Generative pre-trained transformer for single-cell RNA-seq
-- **scFoundation**: Foundation model with performer architecture
-- **Geneformer**: Transformer model trained on rank-value gene encodings
-
-## SAE Architectures
-
-The framework supports multiple SAE architectures optimized for different use cases:
-
-- **Standard SAE**: Classic autoencoder with L1 sparsity penalty
-- **Top-K SAE**: Fixed sparsity using top-k activation selection
-- **Batch Top-K SAE**: Batch-level top-k for improved feature diversity
-- **Matryoshka SAE**: Nested feature learning at multiple scales
-- **Gated SAE**: Gating mechanism for improved reconstruction
-- **JumpReLU SAE**: Jump ReLU activation for sharper features
-
-See [sae4scfm/sae/](sae4scfm/sae/) for implementations.
-
-## Analysis Capabilities
-
-The framework provides comprehensive feature analysis tools:
-
-- **Label Scoring**: Statistical association with cell types, batches, and other metadata
-- **Gene Scoring**: Gene-level feature attribution and enrichment
-- **Expression Scoring**: Relationship to gene expression patterns
-- **Density Scoring**: Feature activation density across cells
-- **Gene Family Analysis**: GSEA and gene set enrichment
-
-Results are saved as structured CSV files with multi-level columns for easy downstream analysis.
-
-## Experiment Tracking
-
-Training runs are automatically tracked using:
-- **Weights & Biases** (configurable, defaults to offline mode)
-- **Hydra output directories** with timestamped runs
-- **Checkpoint saving** for trained SAE models
-- **Metric logging** for reconstruction quality and sparsity
+- **Layers are 0-based** (`sae.target_layer`); the paper counts from 1, so paper layer L is
+  `sae.target_layer=L-1`. The hook reads the residual stream after that layer's final normalization.
+- **SAE architecture** (`sae=`): `batchtopk` (default, used in the paper), `matryoshka`, `standard`,
+  `gated`. The last two use an L1 penalty instead of k: pass `~sae.hyperparams.k`.
+- **SAE inference** (`sae_inference=`): `batchtopk` (default) keeps the k * n largest activations
+  over the n real tokens of a batch; `threshold` keeps activations above the threshold learned during
+  training. Padding never takes part.
+- **Steering** (`config/steer.yaml`): `steering.mode=suppress` clamps the selected features wherever
+  they fire; `steering.mode=induce` writes them onto a random fraction f of each cell's gene tokens at
+  v times their maximum activation.
+  `steering.add_reconstruction_error=true` keeps the SAE's reconstruction error, so only the clamped
+  directions change.
+- **Labels** (`analyze_features`): `analysis.label_scoring.label` lists obs columns;
+  `data.label_columns` maps label names to columns where they differ.
+- **Tahoe cell selection** (`data.preprocess`): `dose`, `skip_cell_lines`, `drop_cell_lines` /
+  `keep_cell_lines` and `balance`, passed after `+data=<config>`.

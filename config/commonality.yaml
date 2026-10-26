@@ -1,0 +1,33 @@
+sae_checkpoint:
+  experiment: multiprocessing
+  timestamp: Apr29-18-19
+
+features:  # max-pooled cell features from generate_features output.format=pooled
+  path: cached_features/${sae_checkpoint.experiment}/features-${sae_checkpoint.timestamp}.pt
+labels:    # one row per encoded cell: celltype_name, dataset, tissue_general, original_assay
+  path: data/census/subset_improved/labels.csv
+
+seed: 0
+
+analysis:
+  transform: int                 # per-feature transform before R2: int (rank inverse-normal), log1p, rank, none
+  chunk: 256                     # features per batch
+  min_celltypes_per_dataset: 3   # datasets with fewer cell types cannot separate biology from study
+  min_r2_full: 0.5               # cell-informative features (Fig. 4)
+  min_interaction: 0.10          # interaction features: R2_full - R2_additive at least this
+  report_features: []            # features whose activation per cell type x tissue x dataset goes to cell_means.csv
+  balanced_per_combo: 300        # balanced control: cells per dataset x cell type combination
+  verdict:
+    min_explained: 0.10          # R2_full below this: unstructured
+    min_component: 0.10          # the winning component must explain at least this much
+    min_active: 0.001            # fraction of active cells below this: dead
+    min_selectivity: 0.90        # one-vs-rest AUROC of the matching factor
+
+nulls:  # Supplementary Table S8
+  seeds: 5
+  n_features: 200
+
+
+hydra:
+  run:
+    dir: experiments/commonality/${sae_checkpoint.experiment}/${sae_checkpoint.timestamp}

@@ -6,5 +6,13 @@ out_batch_size: 8192 # batch size for SAE
 # Evaluation settings
 eval_strategy: 'cached'  # 'cached': cache first N batches at first refresh (consistent, reused)
                          # 'on_demand': consume N batches from training data per eval call
-n_eval_batches: 10       # cached: total batches cached | on_demand: auto-calculated per call
+n_eval_batches: 4       # cached: total batches cached | on_demand: auto-calculated per call
 
+# Multiprocessing consumer settings
+use_multiprocessing: false
+num_workers: 8 # for each dataloader
+superbatch_batches: 1024 #4096       # number of SAE batches prefetched & shuffled on-GPU
+shard_dtype: float16          # dtype for shared-memory shards (float16|float32)
+stage_dtype: float16          # dtype for pinned staging + GPU cache (float16|float32)
+profile: false
+#shard_capacity: 1024000

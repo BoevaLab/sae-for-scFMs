@@ -1,0 +1,11 @@
+defaults:
+  - default
+name: 'immune'
+file_name: 'Immune_ALL_human.h5ad'
+file_path: 'data/immune'
+scbank: False
+census: False
+n_cells: [33506]
+preprocess:
+  counts: True
+  split: 0.15

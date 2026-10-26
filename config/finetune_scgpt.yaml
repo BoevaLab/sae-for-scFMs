@@ -1,0 +1,61 @@
+defaults:
+  - data: lung
+  - override hydra/hydra_logging: colorlog
+  - override hydra/job_logging: colorlog
+  - _self_
+
+seed: 42
+save_dir: "results"
+log_interval: 100
+
+preprocess:
+  n_bins: 51
+  pad_token: "<pad>"
+  pad_value: -2
+  pad_idx: None
+  batch_size: 128 
+  filter_gene_by_counts: False #3
+  filter_cell_by_counts: False
+  normalize_total: False #1e4 
+  log1p: False 
+  subset_hvg: false #'gene_list_perturbation.txt' #False  5000
+  include_zero_gene: false #true
+  binning: 51
+  max_seq_len: 1200
+  mask_value: -1
+  mask_ratio: 0.4
+
+model:
+  name: "scgpt"
+  d_model: 512
+  nhead: 8
+  d_hid: 512
+  nlayers: 12
+
+  nlayers_cls: 1
+  n_cls: 1
+  cell_emb_style: "avg-pool"
+  dropout: 0.2
+  pre_norm: False
+  explicit_zero_prob: True # True
+  use_batch_labels: True #True
+  num_batch_labels: 0
+  domain_spec_batchnorm: True #True
+  dab_weight: 1.0
+
+  use_fast_transformer: True
+  fast_transformer_backend: "flash"
+
+  do_mvc: True
+  do_dab: True #True
+  do_cls: False
+
+training:
+  lr: 1e-4
+  amp: True
+  epochs: 10
+  batch_size: 32
+  lora: 
+    do: False
+    rank: 4
+    alpha: 8

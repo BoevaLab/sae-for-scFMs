@@ -1,8 +1,11 @@
 #!/bin/bash
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --gpus=1
+#SBATCH -p gpu
+#SBATCH --gres=gpu:1
 #SBATCH --time=4:00:00
-#SBATCH --mem-per-cpu=60000
+#SBATCH --mem-per-cpu=120000
 
-python -m scripts.train_sae
+# Train an SAE (IMAGE: the scFM's image), e.g. sbatch jobs/job_train scfm=scgpt data=pancreas
+source jobs/env.sh
+run "$IMAGE" python -m scripts.train_sae "$@"

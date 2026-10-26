@@ -1,0 +1,4 @@
+# SAE inference with the learned threshold: a feature is active wherever its pre-activation
+# exceeds the threshold, independently for every token.
+mode: threshold
+threshold: null  # null keeps the checkpoint's threshold; a number overrides it

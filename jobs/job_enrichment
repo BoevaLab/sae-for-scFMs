@@ -1,0 +1,9 @@
+#!/bin/bash
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --time=24:00:00
+#SBATCH --mem-per-cpu=5000
+
+# Preranked GSEA and term collapsing on gene_selectivity's accumulators (installs blitzgsea if missing)
+source jobs/env.sh
+run scgpt bash -c 'python -c "import blitzgsea" 2>/dev/null || pip install --user blitzgsea; python -m scripts.enrichment_analysis analysis.n_jobs=$SLURM_CPUS_PER_TASK "$@"' _ "$@"

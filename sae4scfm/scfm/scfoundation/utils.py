@@ -4,11 +4,40 @@ from typing import Dict
 
 from .scfoundation_model_files import select_model
 
+def _load_scfoundation_checkpoint_auto(best_ckpt_path, key: str) -> dict:
+    """Return a dict with at least `config` and `model_state_dict`.
+
+    Supported inputs:
+      - Original MMF `.ckpt`: expects `ckpt[key]['config']` + `ckpt[key]['state_dict']`
+      - Fine-tuned `.pt`: raw `state_dict` plus sibling `pretrainconfig.pkl`
+    """
+    ckpt = torch.load(best_ckpt_path, map_location="cpu")
+
+    # MMF `.ckpt` is a dict with the modality key (e.g. 'cell'/'gene')
+    if isinstance(ckpt, dict) and key in ckpt and isinstance(ckpt[key], dict):
+        return convertconfig(ckpt[key])
+
+    # Fine-tuned `.pt`: raw state_dict only (+ sibling pretrainconfig.pkl)
+    try:
+        from pathlib import Path
+        import pickle
+
+        cfg_path = Path(best_ckpt_path).parent / "pretrainconfig.pkl"
+        with open(cfg_path, "rb") as f:
+            config = pickle.load(f)
+    except Exception as e:
+        raise ValueError(
+            f"Unrecognized checkpoint format at {best_ckpt_path}. "
+            f"Expected MMF .ckpt dict with key '{key}' or finetuned .pt raw state_dict. "
+            f"For finetuned .pt, expected sibling pretrainconfig.pkl."
+        ) from e
+
+    return {"config": config, "model_state_dict": ckpt}
+
+
 def load_model_frommmf(best_ckpt_path, key='gene'):
     """Load model"""
-    model_data = torch.load(best_ckpt_path,map_location='cpu')
-    model_data = model_data[key]
-    model_data = convertconfig(model_data)
+    model_data = _load_scfoundation_checkpoint_auto(best_ckpt_path, key)
     if not model_data.__contains__('config'):
         print('***** No config *****')
         config={}
@@ -26,7 +55,7 @@ def load_model_frommmf(best_ckpt_path, key='gene'):
     if not config.__contains__('ppi_edge'):
         config['ppi_edge']=None
     model = select_model(config)
-    model_state_dict = model_data['model_state_dict']    
+    model_state_dict = model_data['model_state_dict']
     model.load_state_dict(model_state_dict)
     return model.cuda(),config
 
@@ -60,9 +89,15 @@ def gatherData(
     gene_ids: np.ndarray,
     max_len: int,
     pad_id: int,
-    pad_value: int
+    pad_value: int,
+    always_keep: tuple = (),
 ) -> Dict[str, torch.Tensor]:
-    """Tokenize and pad gene expression data."""
+    """Tokenize and pad gene expression data.
+
+    Each cell becomes its nonzero entries in column order. Cells with more than max_len
+    nonzero entries keep a random subset of genes (in column order) plus every column
+    listed in `always_keep` (scFoundation's T and S tokens, which must stay last).
+    """
 
     if data.shape[1] != len(gene_ids):
         raise ValueError(
@@ -87,10 +122,10 @@ def gatherData(
         n_nonzero = len(idx)
         
         if n_nonzero > max_len:
-            # Sample max_len genes
-            print('here', flush=True)
-            sampled_idx = np.random.choice(n_nonzero, max_len, replace=False)
-            idx = idx[sampled_idx]
+            keep = np.isin(idx, always_keep)
+            genes = idx[~keep]
+            sampled = np.sort(np.random.choice(len(genes), max_len - keep.sum(), replace=False))
+            idx = np.concatenate([genes[sampled], idx[keep]])
             n_nonzero = max_len
         
         # Directly assign to preallocated tensors (no intermediate copies)

@@ -1,0 +1,11 @@
+defaults:
+  - default
+name: 'covid_evaluation'
+file_name: 'PBMC_evaluation.h5ad'
+file_path: 'data/covid'
+scbank: False
+census: False
+n_cells: [8008]
+preprocess:
+  counts: True
+  split: 1

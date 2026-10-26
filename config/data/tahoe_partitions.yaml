@@ -1,0 +1,17 @@
+# SAE training on all Tahoe partitions, without the treated cells of the six held-out cell lines
+# (their controls stay in). Induction is then scored on those lines (score_perturbation).
+defaults:
+  - default
+name: 'tahoe_partitions'
+file_name: ???  # set per partition by the data loader
+file_path: 'data/tahoe'
+scbank: False
+census: False
+query_list: ['filtered_stratified_shuffled']
+n_partitions: [5]
+n_cells: [867338]
+control: DMSO_TF
+preprocess:
+  counts: True
+  split: 1
+  skip_cell_lines: [CVCL_0399, CVCL_0459, CVCL_0480, CVCL_0546, CVCL_1056, CVCL_1285]

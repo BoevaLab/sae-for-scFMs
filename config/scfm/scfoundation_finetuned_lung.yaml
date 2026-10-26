@@ -1,0 +1,6 @@
+defaults:
+  - scfoundation  # Inherit from base
+
+# Override specific fields
+model_dir: data/scfoundation_finetuned_lung
+model_file: best_model.pt

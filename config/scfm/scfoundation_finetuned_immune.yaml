@@ -1,0 +1,9 @@
+defaults:
+  - scfoundation  # Inherit from base
+
+# Override specific fields
+model_dir: data/scfoundation_finetuned_immune
+model_file: best_model.pt
+
+base_model: scfoundation  # Model name identifier
+_target_: sae4scfm.scfm.scfoundation.adapter.scFoundationAdapter

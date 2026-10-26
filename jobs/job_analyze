@@ -2,6 +2,8 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --time=4:00:00
-#SBATCH --mem-per-cpu=30000
+#SBATCH --mem-per-cpu=80000
 
-python -m scripts.analyze_features
+# Label AMI of every feature (h5 or pooled features), e.g. +data=covid_evaluation
+source jobs/env.sh
+run scgpt python -m scripts.analyze_features "$@"

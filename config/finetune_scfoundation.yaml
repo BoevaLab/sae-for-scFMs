@@ -1,0 +1,68 @@
+# Hydra config for scFoundation full encoder-decoder finetuning
+
+defaults:
+  - data: lung
+  - _self_
+
+seed: 42
+save_dir: results/scfoundation_finetune/${data.name}
+log_interval: 50
+
+wandb:
+  project: scFoundation-finetune
+  name: ${data.name}
+  mode: offline      # set to "online" to stream metrics
+
+model:
+  name: scfoundation
+  model_dir: data/scfoundation
+  ckpt_file: models.ckpt
+  vocab_file: OS_scRNA_gene_index.19264.tsv
+  key: cell          # checkpoint variant: "cell" (encoder for cell embeddings) or "rde" (???)
+  n_genes: 19264     # full gene vocabulary
+
+# RDA pretraining task settings (Methods, Supplementary Notes 9-11)
+preprocess:
+  mask_ratio: 0.30        # paper: "30% as the masking ratio for both zero and nonzero values"
+  p_downsample: 0.0       # P(apply downsampling). Otherwise input == raw (T == S).
+  gamma_min: 0.1          # gamma = T_input / T_raw lower bound (hierarchical Bayesian)
+  gamma_max: 1.0          # upper bound; gamma~Uniform[gamma_min, gamma_max] when downsampling
+  cpm_norm_total: 1.0e4   # CPM target before log1p (paper: log1p(x/sum*1e4))
+
+  # Match authors' inference convention (`tgthighres=t4`): set T token to a constant.
+  fixed_T: 4.0
+
+  # MSE only on masked genes that are in adata and map to vocab (not zero-padded slots).
+  restrict_loss_to_dataset_genes: true
+
+  # The next three are filled at runtime from the loaded pretrainconfig
+  pad_token_id: null
+  mask_token_id: null
+  seq_len: null
+
+training:
+  lr: 1.0e-5
+  weight_decay: 1.0e-6
+  amp: true               # bf16 autocast on cuda; ignored on cpu
+  epochs: 1
+  max_steps: null
+  batch_size: 2          # per GPU; 4 GPUs x bs=4 -> effective 16. Tune for memory.
+  num_workers: 0
+  val_split: 0.05
+  lr_gamma: 0.95          # StepLR per-epoch decay
+  grad_clip: 1.0
+  save_every_epoch: true
+  log_grad_norm: false
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: experiments/finetune_scfoundation/${data.name}/${now:%b%d-%H-%M}
+  sweep:
+    dir: experiments/finetune_scfoundation/sweeps/${data.name}/${now:%b%d-%H-%M-%S}
+    subdir: ${hydra.job.override_dirname}
+  job_logging:
+    handlers:
+      file:
+        filename: ${hydra.run.dir}/run.log

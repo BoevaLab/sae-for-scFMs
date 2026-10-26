@@ -1,0 +1,4 @@
+# SAE inference with batch top-k, as in training: each batch keeps its k * n_tokens largest
+# activations, so a token's active features depend on the other tokens in its batch.
+mode: batchtopk
+threshold: null

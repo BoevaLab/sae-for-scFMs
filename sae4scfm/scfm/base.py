@@ -52,3 +52,8 @@ class ModelAdapter(ABC):
     def generate_activation_mask(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
         """Generate mask for selecting non-padding activations from batch data"""
         pass
+
+    @abstractmethod
+    def special_token_ids(self) -> set:
+        """Ids in batch["genes"] that are not genes (padding and special tokens)."""
+        pass

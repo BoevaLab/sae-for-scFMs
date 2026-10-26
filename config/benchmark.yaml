@@ -1,18 +1,11 @@
 defaults:
-  - data: pancreas
+  - data: lung
 
-seed: 0
+seed: 1
 
-experiments:
-  - number: "steering_tables"
-    date: "Jan19-08-44"
-    seeds: [42, 43, 44]
-    clamps: [-2.0]
-    n_features: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    selector: [AMI, random]
-    original: false
+experiments: []
 
-comparison_id: 'randomvsAMI_pancreas'
+comparison_id: 'scVI_lung_seed1'
 
 hydra:
   job:

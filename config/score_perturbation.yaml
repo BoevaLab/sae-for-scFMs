@@ -1,0 +1,29 @@
+steer_run: ???   # an induction run of steer_features, e.g. experiments/steer/tahoe/Jun24-10-48
+drug: null       # treated label in columns.drug; default: the one drug in the run besides the control
+control: DMSO_TF
+columns:
+  drug: drug
+  cell_line: cell_line
+# Lines whose treated cells were left out of SAE training (scored at the selected f, v only)
+heldout_cell_lines: [CVCL_0399, CVCL_0459, CVCL_0480, CVCL_0546, CVCL_1056, CVCL_1285]
+knn: 15
+
+selection:  # f, v minimizing the mean of w_cms |1 - CMS| + w_das |1 - DAS| over training lines
+  weights: {cms: 0.5, das: 0.8}
+
+dose:
+  column: drugconc  # numeric dose in obs (Fig. 3d); null to skip
+  run: null         # induction run over all doses (e.g. the trajectory run) for Fig. 3d; null: steer_run
+
+dose_activation:    # Fig. 3f: activation of these features by dose
+  features: []      # e.g. the top induction feature
+  tag: ""           # generate_features output.tag of the pooled features
+  cells: null       # run whose cells.csv describes those features' cells (e.g. embed_cells on the same
+                    # data); null: the features are of steer_run's data
+
+
+hydra:
+  job:
+    chdir: False
+  run:
+    dir: ${steer_run}/perturbation_scores

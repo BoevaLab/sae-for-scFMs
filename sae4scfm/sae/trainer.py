@@ -34,6 +34,44 @@ class SAETrainer:
             "wandb_name": "trainer",
         }
 
+    def get_extra_state(self):
+        """Return trainer-specific state that is not covered by module/optimizer state dicts."""
+        return {}
+
+    def load_extra_state(self, state):
+        """Restore trainer-specific state that is not covered by module/optimizer state dicts."""
+        return
+
+    def state_dict(self, step: int):
+        state = {
+            "step": step,
+            "trainer_config": self.config,
+        }
+
+        if hasattr(self, "ae"):
+            state["ae_state_dict"] = self.ae.state_dict()
+        if hasattr(self, "optimizer"):
+            state["optimizer_state_dict"] = self.optimizer.state_dict()
+        if hasattr(self, "scheduler"):
+            state["scheduler_state_dict"] = self.scheduler.state_dict()
+
+        extra_state = self.get_extra_state()
+        if extra_state:
+            state["trainer_extra_state"] = extra_state
+
+        return state
+
+    def load_state_dict(self, state):
+        if hasattr(self, "ae") and "ae_state_dict" in state:
+            self.ae.load_state_dict(state["ae_state_dict"])
+        if hasattr(self, "optimizer") and "optimizer_state_dict" in state:
+            self.optimizer.load_state_dict(state["optimizer_state_dict"])
+        if hasattr(self, "scheduler") and "scheduler_state_dict" in state:
+            self.scheduler.load_state_dict(state["scheduler_state_dict"])
+        if "trainer_extra_state" in state:
+            self.load_extra_state(state["trainer_extra_state"])
+        return int(state.get("step", 0))
+
 
 class ConstrainedAdam(torch.optim.Adam):
     """

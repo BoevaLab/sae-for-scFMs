@@ -2,7 +2,7 @@ defaults:
   - scgpt  # Inherit from base
 
 # Override specific fields
-model_dir: data/scgpt_finetuned_immune_corrected
+model_dir: data/scgpt_finetuned_immune_batch
 
 model:
   use_batch_labels: True

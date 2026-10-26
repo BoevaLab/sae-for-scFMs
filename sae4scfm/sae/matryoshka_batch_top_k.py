@@ -1,7 +1,5 @@
 import torch as t
 import torch.nn as nn
-import torch.nn.functional as F
-import einops
 from collections import namedtuple
 from typing import Optional
 from math import isclose
@@ -109,7 +107,7 @@ class MatryoshkaBatchTopKSAE(Dictionary, nn.Module):
 
     @classmethod
     def from_pretrained(cls, path, k=None, device=None, **kwargs) -> "MatryoshkaBatchTopKSAE":
-        state_dict = t.load(path)
+        state_dict = t.load(path, map_location="cpu")
         activation_dim, dict_size = state_dict["W_enc"].shape
         if k is None:
             k = state_dict["k"].item()
@@ -250,7 +248,7 @@ class MatryoshkaBatchTopKTrainer(SAETrainer):
             active = f[f > 0]
 
             if active.size(0) == 0:
-                min_activation = t.tensor(0.0)
+                min_activation = t.tensor(0.0, device=f.device)
             else:
                 min_activation = active.min().detach().to(dtype=t.float32)
             if self.ae.threshold < 0:
@@ -260,13 +258,14 @@ class MatryoshkaBatchTopKTrainer(SAETrainer):
                     (1 - self.threshold_beta) * min_activation
                 )
 
-    def loss(self, x, step=None, logging=False):
+    def loss(self, x, step=None, logging=False, update_state=True):
+        """Training loss. With update_state=False (evaluation) the inference threshold and the
+        dead-feature counters are left untouched."""
         f, active_indices_F, post_relu_acts_BF = self.ae.encode(
             x, return_active=True, use_threshold=False
         )
-        # l0 = (f != 0).float().sum(dim=-1).mean().item()
 
-        if step > self.threshold_start_step:
+        if update_state and step > self.threshold_start_step:
             self.update_threshold(f)
 
         x_reconstruct = t.zeros_like(x) + self.ae.b_dec
@@ -290,13 +289,14 @@ class MatryoshkaBatchTopKTrainer(SAETrainer):
         max_l2_loss = l2_losses.max().item()
         mean_l2_loss = l2_losses.mean()
 
-        self.effective_l0 = self.k
+        self.effective_l0 = (f != 0).float().sum(dim=-1).mean().item()
 
-        num_tokens_in_step = x.size(0)
-        did_fire = t.zeros_like(self.num_tokens_since_fired, dtype=t.bool)
-        did_fire[active_indices_F] = True
-        self.num_tokens_since_fired += num_tokens_in_step
-        self.num_tokens_since_fired[did_fire] = 0
+        if update_state:
+            num_tokens_in_step = x.size(0)
+            did_fire = t.zeros_like(self.num_tokens_since_fired, dtype=t.bool)
+            did_fire[active_indices_F] = True
+            self.num_tokens_since_fired += num_tokens_in_step
+            self.num_tokens_since_fired[did_fire] = 0
 
         auxk_loss = self.get_auxiliary_loss((x - x_reconstruct).detach(), post_relu_acts_BF)
         loss = mean_l2_loss + self.auxk_alpha * auxk_loss

@@ -1,0 +1,13 @@
+defaults:
+  - data: ???  # dataset to tokenize, e.g. data=lung
+  - _self_
+
+output_dir: data/${data.name}    # writes <output_dir>/<data.name>.dataset and <data.name>_lengths.pkl
+model_version: V2
+cell_attributes: [celltype, batch]  # obs columns kept in the dataset
+chunk_size: 512                     # cells normalized at a time
+
+
+hydra:
+  run:
+    dir: ${output_dir}/tokenize_logs

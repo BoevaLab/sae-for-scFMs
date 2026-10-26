@@ -1,7 +1,5 @@
 import torch as t
 import torch.nn as nn
-import torch.nn.functional as F
-import einops
 from collections import namedtuple
 from typing import Optional
 
@@ -75,7 +73,7 @@ class BatchTopKSAE(Dictionary, nn.Module):
 
     @classmethod
     def from_pretrained(cls, path, k=None, device=None, **kwargs) -> "BatchTopKSAE":
-        state_dict = t.load(path)
+        state_dict = t.load(path, map_location="cpu")
         dict_size, activation_dim = state_dict["encoder.weight"].shape
         if k is None:
             k = state_dict["k"].item()
@@ -196,7 +194,7 @@ class BatchTopKTrainer(SAETrainer):
             active = f[f > 0]
 
             if active.size(0) == 0:
-                min_activation = 0.0
+                min_activation = t.tensor(0.0, device=f.device)
             else:
                 min_activation = active.min().detach().to(dtype=t.float32)
 
@@ -207,26 +205,28 @@ class BatchTopKTrainer(SAETrainer):
                     (1 - self.threshold_beta) * min_activation
                 )
 
-    def loss(self, x, step=None, logging=False):
+    def loss(self, x, step=None, logging=False, update_state=True):
+        """Training loss. With update_state=False (evaluation) the inference threshold and the
+        dead-feature counters are left untouched."""
         f, active_indices_F, post_relu_acts_BF = self.ae.encode(
             x, return_active=True, use_threshold=False
         )
-        # l0 = (f != 0).float().sum(dim=-1).mean().item()
 
-        if step > self.threshold_start_step:
+        if update_state and step > self.threshold_start_step:
             self.update_threshold(f)
 
         x_hat = self.ae.decode(f)
 
         e = x - x_hat
 
-        self.effective_l0 = self.k
+        self.effective_l0 = (f != 0).float().sum(dim=-1).mean().item()
 
-        num_tokens_in_step = x.size(0)
-        did_fire = t.zeros_like(self.num_tokens_since_fired, dtype=t.bool)
-        did_fire[active_indices_F] = True
-        self.num_tokens_since_fired += num_tokens_in_step
-        self.num_tokens_since_fired[did_fire] = 0
+        if update_state:
+            num_tokens_in_step = x.size(0)
+            did_fire = t.zeros_like(self.num_tokens_since_fired, dtype=t.bool)
+            did_fire[active_indices_F] = True
+            self.num_tokens_since_fired += num_tokens_in_step
+            self.num_tokens_since_fired[did_fire] = 0
 
         l2_loss = e.pow(2).sum(dim=-1).mean()
         auxk_loss = self.get_auxiliary_loss(e.detach(), post_relu_acts_BF)
@@ -294,6 +294,16 @@ class BatchTopKTrainer(SAETrainer):
             "wandb_name": self.wandb_name,
             "submodule_name": self.submodule_name,
         }
+
+    def get_extra_state(self):
+        return {
+            "num_tokens_since_fired": self.num_tokens_since_fired.detach().cpu(),
+        }
+
+    def load_extra_state(self, state):
+        num_tokens_since_fired = state.get("num_tokens_since_fired")
+        if num_tokens_since_fired is not None:
+            self.num_tokens_since_fired = num_tokens_since_fired.to(self.device)
 
     @staticmethod
     def geometric_median(points: t.Tensor, max_iter: int = 100, tol: float = 1e-5):

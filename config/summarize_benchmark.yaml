@@ -1,0 +1,63 @@
+# scIB aggregation used in the paper (Fig. 2b-d, Supplementary Figs. S7-S9, Tables S5-S7)
+metrics:
+  # cLISI is left out: it is nearly constant across the benchmark (range < 0.01), so min-max
+  # scaling would turn its noise into large swings.
+  bio: ["Isolated labels", "Leiden NMI", "Leiden ARI", "Silhouette label"]
+  batch: ["BRAS", "iLISI", "KBET", "Graph connectivity", "PCR comparison"]
+  weights: {bio: 0.6, batch: 0.4}
+
+# Models to summarize (keys of `runs`), e.g. [scgpt, scgpt_dar] for a first look at one model;
+# null: all. The min-max scalers are fit on the included models only, so normalized scores of a
+# subset differ from those of the full summary (the raw metrics do not).
+models: null
+
+# Each summary: benchmark runs (comparison_id patterns with {model}, {dataset}, {seed}) per model,
+# the scaler fit (per_run | per_dataset | global) and whether baselines enter the fit. The runs are
+# the benchmarks of jobs/batch_jobs/submit_batch_correction.py (keep its grid in line with this file).
+summaries:
+  suppression:  # top-30 AMI features vs unsteered, with DAR and baselines (Fig. 2b, Tables S5-S7)
+    normalization: global
+    include_baselines: true
+    datasets: [immune, lung, pancreas]
+    runs:
+      scgpt: ["scgpt_batch_steering_{dataset}"]
+      geneformer: ["geneformer_batch_steering_{dataset}"]
+      scfoundation: ["scfoundation_batch_steering_{dataset}"]
+      scgpt_dar: ["scgpt_batch_steering_{dataset}_DAR"]
+  n_features:  # AMI vs random selection over the number of steered features (Fig. 2d, S8)
+    normalization: global
+    include_baselines: false
+    kinds: [steered]
+    datasets: [immune, lung, pancreas]
+    seeds: [42, 43, 44]
+    runs:
+      scgpt: ["scgpt_batch_steering_l5_s{seed}_{dataset}"]
+      geneformer: ["geneformer_batch_steering_l5_s{seed}_{dataset}"]
+      scfoundation: ["scfoundation_batch_steering_l5_s{seed}_{dataset}"]
+  layers:  # SAE layer (Fig. 2c, S7)
+    normalization: per_dataset
+    include_baselines: false
+    kinds: [original, steered]
+    datasets: [immune, lung, pancreas]
+    seeds: [42, 43, 44]
+    runs:
+      scgpt: ["scgpt_layer_steering_{dataset}_{seed}"]
+      geneformer: ["geneformer_layer_steering_{dataset}_{seed}"]
+      scfoundation: ["scfoundation_layer_steering_{dataset}_{seed}"]
+  clamps:  # clamp value (S9)
+    normalization: per_dataset
+    include_baselines: false
+    kinds: [original, steered]
+    datasets: [immune, lung, pancreas]
+    seeds: [42, 43, 44]
+    runs:
+      scgpt: ["scgpt_clamp_steering_{dataset}_{seed}"]
+      geneformer: ["geneformer_clamp_steering_{dataset}_{seed}"]
+      scfoundation: ["scfoundation_clamp_steering_{dataset}_{seed}"]
+
+
+hydra:
+  job:
+    chdir: False
+  run:
+    dir: experiments/summary/benchmark

@@ -1,0 +1,11 @@
+#!/bin/bash
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH -p gpu
+#SBATCH --gres=gpu:1
+#SBATCH --time=2:00:00
+#SBATCH --mem-per-cpu=40000
+
+# Cell embeddings without an SAE (e.g. the DAR baseline), e.g. scfm=scgpt_finetuned_pancreas_corrected data=pancreas seed=42 experiment=scgpt_dar_pancreas
+source jobs/env.sh
+run "$IMAGE" python -m scripts.embed_cells "$@"

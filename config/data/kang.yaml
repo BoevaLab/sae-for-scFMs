@@ -1,0 +1,13 @@
+defaults:
+  - default
+name: 'kang'
+file_name: 'kang_2018.h5ad'
+file_path: 'data/kang'
+scbank: False
+census: False
+n_cells: [24673]
+preprocess:
+  counts: True
+  split: 1
+label_columns:
+  perturbation: label  # stim / ctrl

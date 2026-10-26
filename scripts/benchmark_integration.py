@@ -1,7 +1,4 @@
 import hydra
-from hydra.utils import instantiate, get_class
-from hydra import initialize, compose
-from omegaconf import DictConfig, OmegaConf
 
 import os
 import sys
@@ -14,7 +11,6 @@ REPO_ROOT = Path(__file__).parent.parent.resolve()
 os.chdir(REPO_ROOT)
 sys.path.insert(0, str(REPO_ROOT))
 
-from sae4scfm.core.utils import set_seed
 from sae4scfm.core.steering import compute_batch_integration
 from sae4scfm.core.io_utils import load_embeddings, load_adata
 
@@ -24,10 +20,11 @@ log = logging.getLogger(__name__)
 def main(cfg) -> None:
     # Load adata with test split
     test_fraction = cfg.data.preprocess.split if hasattr(cfg.data, 'preprocess') else 1.0
+    test_fraction = 1.0
     adata = load_adata(cfg, sub_sample=test_fraction)
 
     load_embeddings(adata, cfg)
-    log.info(f"Loaded embeddings")
+    log.info("Loaded embeddings")
 
     results = compute_batch_integration(adata, cfg)
 

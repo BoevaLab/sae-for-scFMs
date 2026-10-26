@@ -1,0 +1,46 @@
+sae_checkpoint:
+  experiment: multiprocessing
+  timestamp: Apr29-18-19
+
+inputs:
+  # Directory produced by gene_selectivity (act_sum.npz, gene_occurrence.npy, meta.json)
+  accum_dir: experiments/selectivity/${sae_checkpoint.experiment}/${sae_checkpoint.timestamp}
+  # A run over all features (same accumulators and settings). With analysis.features, global_q
+  # ranks the tested features among its other features, as in a run over all features.
+  reference: experiments/enrichment/${sae_checkpoint.experiment}/${sae_checkpoint.timestamp}${transform_tag:${analysis.transform}}
+  base_model: null  # scFM of the SAE (scgpt, geneformer, scfoundation); null: read from the training run
+
+# Appended to the output folder: "_raw" with analysis.transform=raw, "_seed<n>" with a seed other than
+# 42, then "_selected" with analysis.features
+run_tag: ${transform_tag:${analysis.transform}}${seed_tag:${analysis.seed}}${selected_tag:${analysis.features}}
+
+libraries:  # MSigDB collections
+  hallmark: true
+  bp: true    # GO biological process
+  cp: true    # C2 canonical pathways
+  cc: false   # GO cellular component
+  mf: false   # GO molecular function
+
+analysis:
+  features: []        # feature ids to test; empty: every feature with activation
+  transform: log      # gene scores GSEA ranks and weights: log, or raw (the profile itself; the manuscript's runs and Fig. 4e)
+  min_size: 15        # gene sets with fewer universe genes are dropped
+  max_size: 500       # gene sets with more are dropped
+  permutations: 1000  # blitzgsea null permutations
+  pval_keep: 0.05     # rows kept in the long table (ES > 0 and p below this); global q counts all tests
+  seed: 42            # feature i's null and zero jitter use seed + i; other seeds test the stability of q
+  n_jobs: 8
+
+collapse:  # enrichment_collapsed.csv
+  kappa: 0.35               # DAVID kappa threshold (low stringency)
+  initial_group_size: 3
+  linkage_frac: 0.5
+  merge_overlap: 0.5
+  q_max: 0.001              # a feature-term pair is enriched when its global q is below this
+  min_leading_edge: 4       # and its leading edge has at least this many genes
+  max_topk20_mass: 0.9      # features with this much profile mass on 20 genes are skipped
+
+
+hydra:
+  run:
+    dir: experiments/enrichment/${sae_checkpoint.experiment}/${sae_checkpoint.timestamp}${run_tag}

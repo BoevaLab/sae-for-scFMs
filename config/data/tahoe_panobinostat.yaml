@@ -1,0 +1,14 @@
+# DMSO and panobinostat at 0.5 uM only, about 1:1, every cell line (partition_0.h5ad): the PCA / UMAP
+# induction runs (Fig. 3b, S12-S16). Everything else on this drug uses tahoe_panobinostat_all.
+defaults:
+  - tahoe
+
+name: 'tahoe_panobinostat'
+file_name: 'partition_0.h5ad'
+file_path: 'data/tahoe/panobinostat'
+scbank: False
+census: False
+n_cells: [31896]
+preprocess:
+  counts: True
+  split: 0.125  # fraction of the cells steered

@@ -1,0 +1,30 @@
+# Cell embeddings of an scFM without an SAE (scripts/embed_cells.py), e.g. the DAR baseline:
+#   python -m scripts.embed_cells scfm=scgpt_finetuned_pancreas_corrected data=pancreas seed=42 experiment=scgpt_dar_pancreas
+defaults:
+  - scfm: scgpt_finetuned_pancreas_corrected
+  - data: pancreas
+  - buffer: default
+  - _self_
+
+experiment: ???  # output: experiments/steer/<experiment>/s<seed>/
+seed: 42         # seeds preprocessing (scGPT binning) and the forward pass, as an SAE run's seed does
+cell_columns: [batch, celltype, cell_line, drug, drugconc]  # obs columns saved in cells.csv, if present
+
+# As in SAE training (config/train.yaml), so the embeddings equal an SAE run's unsteered ones
+data:
+  preprocess:
+    batch_size: 16
+    subset_hvg: 5000
+    include_zero_gene: false
+    split: 1.0  # all cells
+buffer:
+  num_workers: 0
+  use_multiprocessing: false
+sae:
+  target_layer: 0  # only resolves the scfm config's hook layer; no hook is used
+
+hydra:
+  job:
+    chdir: False
+  run:
+    dir: experiments/steer/${experiment}/s${seed}/

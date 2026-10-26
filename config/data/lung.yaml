@@ -1,0 +1,11 @@
+defaults:
+  - default
+name: 'lung'
+file_name: 'Lung_atlas_public.h5ad'
+file_path: 'data/lung'
+scbank: False
+census: False
+n_cells: [32426]
+preprocess:
+  counts: False
+  split: 0.15

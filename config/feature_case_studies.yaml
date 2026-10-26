@@ -1,0 +1,36 @@
+sae_checkpoint:
+  experiment: covid_analysis
+  timestamp: Apr07-13-34
+
+inputs:  # generate_features h5 and gene_selectivity accumulators of this SAE and dataset
+  features_h5: cached_features/${sae_checkpoint.experiment}/features-${sae_checkpoint.timestamp}.h5
+  selectivity_dir: experiments/selectivity/${sae_checkpoint.experiment}/${sae_checkpoint.timestamp}
+
+encoding_strategy:  # S1.8, Fig. 5b (manuscript: features [326, 250, 187] of the scGPT COVID SAE)
+  features: []
+  groupby: celltype   # obs column; load_adata maps the COVID annotation_broad to celltype
+  group: B
+  de_method: t-test
+  max_padj: 0.05
+  min_logfc: 0.0  # minimum |log2 fold change| of DE genes (0: significance only); e.g. 0.5 or 1
+  mass: 0.5   # a feature's genes: the fewest top genes carrying this fraction of its profile; null: top_n
+  top_n: 80   # used when mass is null
+
+group_activation:  # Fig. 5c (manuscript: feature 224 by cell type and COVID status)
+  features: []
+  groupby: [annotation_broad, COVID_status]
+  rename:
+    annotation_broad: {"T CD8+": T, "T CD4+": T, "T reg": T, "T g/d": T, MAIT: T, B: B, Monocyte: Monocyte,
+                       HPC: HPC, NK: NK, DC: DC}
+
+gene_properties:  # Fig. 5d (manuscript: a SMARTer-aligned scGPT feature on pancreas)
+  features: []
+  top_n: 100
+  metadata: resources/gene_metadata.csv  # ensembl_gene_id, hgnc_symbol, gc (fraction), len (bp)
+
+
+hydra:
+  job:
+    chdir: False
+  run:
+    dir: experiments/case_studies/${sae_checkpoint.experiment}/${sae_checkpoint.timestamp}

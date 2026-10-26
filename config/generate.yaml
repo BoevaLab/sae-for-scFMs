@@ -1,9 +1,17 @@
+defaults:
+  - sae_inference: batchtopk
+  - _self_
+
 # SAE checkpoint to load (required)
 sae_checkpoint:
-  experiment: "layer_sweeps"  # Experiment name
-  timestamp: "Jan19-20-09"  # Format: %b%d-%H-%M from training
+  experiment: "covid_analysis"  # Experiment name "cellxgene" 
+  timestamp: "Aug14-17-20"  # Format: %b%d-%H-%M from training "May11-10-50"
   # Will load: experiments/${experiment}/${timestamp}/model.pth
   # And config: experiments/${experiment}/${timestamp}/.hydra/config.yaml
+
+output:
+  format: h5  # h5: token-level features (gene-level analyses, induction max); pooled: per-cell max (.pt)
+  tag: ""     # appended to the file name, e.g. "_covid" -> features-<timestamp>_covid.h5
 
 
 hydra:

@@ -1,0 +1,6 @@
+defaults:
+  - scfoundation  # Inherit from base
+
+# Override specific fields
+model_dir: data/scfoundation_finetuned_pancreas
+model_file: best_model.pt

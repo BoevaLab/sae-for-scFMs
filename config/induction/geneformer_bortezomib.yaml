@@ -1,0 +1,8 @@
+# @package steering.induce
+# Bortezomib induction features of the manuscript's geneformer Tahoe SAE trained without the six
+# held-out cell lines (experiments/train/tahoe/Jul06-18-10). Feature ids only apply to that checkpoint.
+# f and v are chosen per drug by scripts/score_perturbation.py on the training lines
+# (manuscript: f=0.7, v=2.0).
+sae: tahoe/Jul06-18-10  # the SAE these feature ids belong to (checked by jobs/batch_jobs/submit_drug_induction.py)
+features: [1758]
+negative_features: []
